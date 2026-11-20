@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+env/
+venv/
+.env
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.db.backup*
+*.sqlite
+*.sqlite3
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Large files
+ipinfo_lite.csv
