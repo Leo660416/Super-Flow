@@ -2975,7 +2975,7 @@ function renderIpAliasesTable(list) {
     if (list.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="3" class="text-center text-muted py-3">尚未設定任何自訂 IP 別名。</td>
+                <td colspan="5" class="text-center text-muted py-3">尚未設定任何自訂 IP 別名。</td>
             </tr>
         `;
         return;
@@ -2984,82 +2984,42 @@ function renderIpAliasesTable(list) {
     tbody.innerHTML = '';
     list.forEach(item => {
         const tr = document.createElement('tr');
+        const ownerDept = [item.owner_name, item.department].filter(Boolean).map(escapeHtml).join(' · ') || '<span class="text-muted">-</span>';
+        const vendorContact = [item.vendor_name, item.contact_info].filter(Boolean).map(escapeHtml).join(' · ') || '<span class="text-muted">-</span>';
         tr.innerHTML = `
-            <td style="padding: 8px 12px; color: var(--text-primary); font-weight: 500; width: 35%;">${item.ip}</td>
-            <td class="name-cell" style="padding: 8px 12px; color: var(--text-secondary); width: 45%;">${item.name}</td>
-            <td class="actions-cell" style="padding: 8px 12px; text-align: right; width: 20%;">
-                <button class="btn-edit-ip-alias" style="background: none; border: none; color: var(--color-primary); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s; margin-right: 6px;">
+            <td style="padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono); font-weight: 500;">${escapeHtml(item.ip)}</td>
+            <td class="name-cell" style="padding: 8px 12px; color: var(--text-primary);">
+                <div style="font-weight: 600;">${escapeHtml(item.name)}</div>
+                ${item.device_role ? `<div style="font-size: 0.74rem; color: var(--text-muted);">${escapeHtml(item.device_role)}</div>` : ''}
+            </td>
+            <td style="padding: 8px 12px; color: #fde68a; font-size: 0.82rem;">${ownerDept}</td>
+            <td style="padding: 8px 12px; color: #34d399; font-size: 0.82rem;">${vendorContact}</td>
+            <td class="actions-cell" style="padding: 8px 12px; text-align: right; white-space: nowrap;">
+                <button class="btn-edit-ip-alias" title="帶入上方表單編輯" style="background: none; border: none; color: var(--color-primary); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s; margin-right: 6px;">
                     <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
                 </button>
-                <button class="btn-delete-ip-alias" style="background: none; border: none; color: var(--color-danger); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s;">
+                <button class="btn-delete-ip-alias" title="刪除" style="background: none; border: none; color: var(--color-danger); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s;">
                     <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                 </button>
             </td>
         `;
         
-        const nameCell = tr.querySelector('.name-cell');
-        const actionsCell = tr.querySelector('.actions-cell');
         const btnEdit = tr.querySelector('.btn-edit-ip-alias');
         const btnDelete = tr.querySelector('.btn-delete-ip-alias');
         
-        // Bind edit action (inline edit)
         btnEdit.addEventListener('click', () => {
-            // Swap name cell to input
-            nameCell.innerHTML = `<input type="text" class="form-control select-dark edit-name-input" style="width: 100%; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; color: var(--text-primary); font-size: 0.85rem;" value="${item.name.replace(/"/g, '&quot;')}">`;
-            
-            // Swap actions to Save / Cancel
-            actionsCell.innerHTML = `
-                <button class="btn-save-edit" style="background: none; border: none; color: var(--color-success); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s; margin-right: 6px;">
-                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
-                </button>
-                <button class="btn-cancel-edit" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.2s;">
-                    <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-                </button>
-            `;
-            
-            if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
-            }
-            
-            const saveBtn = actionsCell.querySelector('.btn-save-edit');
-            const cancelBtn = actionsCell.querySelector('.btn-cancel-edit');
-            const editInput = nameCell.querySelector('.edit-name-input');
-            
-            editInput.focus();
-            
-            saveBtn.addEventListener('click', async () => {
-                const newName = editInput.value.trim();
-                if (!newName) {
-                    showIpAliasStatus('別名名稱不得為空', 'error');
-                    return;
-                }
-                
-                try {
-                    const res = await fetch(`/api/ips/aliases?ip=${encodeURIComponent(item.ip)}&name=${encodeURIComponent(newName)}`, { method: 'POST' });
-                    if (!res.ok) throw new Error('Save request failed');
-                    showIpAliasStatus('IP 別名已成功更新', 'success');
-                    fetchIpAliases();
-                    fetchFlows();
-                } catch (err) {
-                    showIpAliasStatus(`儲存失敗: ${err.message}`, 'error');
-                }
-            });
-            
-            cancelBtn.addEventListener('click', () => {
-                // Restore original rows
-                renderIpAliasesTable(list);
-            });
-            
-            editInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    saveBtn.click();
-                } else if (e.key === 'Escape') {
-                    cancelBtn.click();
-                }
-            });
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+            setVal('input-alias-ip', item.ip);
+            setVal('input-alias-ip-name', item.name);
+            setVal('input-alias-owner', item.owner_name);
+            setVal('input-alias-dept', item.department);
+            setVal('input-alias-vendor', item.vendor_name);
+            setVal('input-alias-contact', item.contact_info);
+            setVal('input-alias-role', item.device_role);
+            document.getElementById('input-alias-ip-name')?.focus();
+            showIpAliasStatus(`已將 ${item.ip} 帶入上方表單，修改後按「儲存」即可更新。`, 'success');
         });
         
-        // Bind delete action
         btnDelete.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (!confirm(`您確定要刪除 IP ${item.ip} 的別名嗎？`)) return;
@@ -3092,6 +3052,11 @@ async function handleSaveIpAlias(e) {
 
     const ip = inputIp.value.trim();
     const name = inputName.value.trim();
+    const owner_name = (document.getElementById('input-alias-owner')?.value || '').trim();
+    const department = (document.getElementById('input-alias-dept')?.value || '').trim();
+    const vendor_name = (document.getElementById('input-alias-vendor')?.value || '').trim();
+    const contact_info = (document.getElementById('input-alias-contact')?.value || '').trim();
+    const device_role = (document.getElementById('input-alias-role')?.value || '').trim();
 
     if (!ip || !name) {
         showIpAliasStatus('請填寫 IP 位址與別名名稱。', 'error');
@@ -3099,16 +3064,18 @@ async function handleSaveIpAlias(e) {
     }
 
     try {
-        const res = await fetch(`/api/ips/aliases?ip=${encodeURIComponent(ip)}&name=${encodeURIComponent(name)}`, {
+        const params = new URLSearchParams({ ip, name, owner_name, department, vendor_name, contact_info, device_role });
+        const res = await fetch(`/api/ips/aliases?${params.toString()}`, {
             method: 'POST'
         });
         if (!res.ok) throw new Error('Failed to save IP alias');
         
-        showIpAliasStatus(`已成功將 IP ${ip} 對應為 ${name}`, 'success');
-        inputIp.value = '';
-        inputName.value = '';
+        showIpAliasStatus(`已成功儲存 IP ${ip} (${name}) 與負責人／廠商資訊`, 'success');
+        ['input-alias-ip', 'input-alias-ip-name', 'input-alias-owner', 'input-alias-dept', 'input-alias-vendor', 'input-alias-contact', 'input-alias-role'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         fetchIpAliases();
-        // Refresh flows table to reflect names update immediately
         fetchFlows();
     } catch (err) {
         showIpAliasStatus(`儲存失敗: ${err.message}`, 'error');
@@ -4125,60 +4092,534 @@ async function fetchAnomalousReportStats() {
         if (!response.ok) throw new Error('Failed to fetch stats');
         const data = await response.json();
 
-        // Render Top Sources chart
-        renderAnomaliesBarChart(
-            'chart-anomalies-sources',
-            data.top_sources.map(x => formatChartIPLabel(x.src, x.domain)),
-            data.top_sources.map(x => x.bytes),
-            '來源流量 (Bytes)',
-            'rgba(245, 158, 11, 0.7)',
-            'rgba(245, 158, 11, 1)',
-            { itemType: 'ip', defaultDir: 'src', viewType: 'anomalies', rawItems: data.top_sources.map(x => x.src) }
-        );
-
-        // Render Top Destinations chart
-        renderAnomaliesBarChart(
-            'chart-anomalies-destinations',
-            data.top_destinations.map(x => formatChartIPLabel(x.dst, x.domain)),
-            data.top_destinations.map(x => x.bytes),
-            '目的流量 (Bytes)',
-            'rgba(16, 185, 129, 0.7)',
-            'rgba(16, 185, 129, 1)',
-            { itemType: 'ip', defaultDir: 'dst', viewType: 'anomalies', rawItems: data.top_destinations.map(x => x.dst) }
-        );
-
-        // Render Top Ports chart
-        renderAnomaliesBarChart(
-            'chart-anomalies-ports',
-            data.top_ports.map(x => x.port.toString() + (x.port_name ? ` (${x.port_name})` : '')),
-            data.top_ports.map(x => x.bytes),
-            '連接埠流量 (Bytes)',
-            'rgba(99, 102, 241, 0.7)',
-            'rgba(99, 102, 241, 1)',
-            { itemType: 'port', defaultDir: 'any', viewType: 'anomalies', rawItems: data.top_ports.map(x => x.port) }
-        );
-
-        // Render Top Anomalous IP Aliases chart
-        const topAnomaliesAliases = data.top_aliases || [];
-        renderAnomaliesBarChart(
-            'chart-anomalies-aliases',
-            topAnomaliesAliases.map(x => formatChartAliasLabel(x.name)),
-            topAnomaliesAliases.map(x => x.bytes),
-            '別名流量 (Bytes)',
-            'rgba(236, 72, 153, 0.7)',
-            'rgba(236, 72, 153, 1)',
-            { 
-                itemType: 'alias', 
-                defaultDir: 'any', 
-                viewType: 'anomalies', 
-                rawItems: topAnomaliesAliases.map(x => x.name),
-                flowCounts: topAnomaliesAliases.map(x => x.flows)
-            }
-        );
+        state.lastDrillStats = data;
+        renderActiveDrillChart();
     } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('Error fetching anomalous report stats:', err);
+        const container = document.getElementById('drill-sankey-container');
+        if (container) {
+            container.innerHTML = `<div class="text-center text-danger py-4">載入統計圖表失敗: ${escapeHtml(err.message)}</div>`;
+        }
     }
+}
+
+function renderActiveDrillChart() {
+    const data = state.lastDrillStats;
+    const selectEl = document.getElementById('drill-chart-mode-select');
+    const hintEl = document.getElementById('drill-chart-hint');
+    const summaryBadge = document.getElementById('drill-sankey-summary');
+    const tooltip = document.getElementById('drill-sankey-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
+    if (!data) return;
+
+    const mode = selectEl ? selectEl.value : 'sankey';
+    const totalBytes = data.total_bytes || 0;
+    const totalFlows = data.total_flows || 0;
+
+    if (mode === 'sankey') {
+        if (hintEl) hintEl.innerText = '線寬代表傳輸量 (Bytes)，點擊節點可加入篩選';
+        renderDrillSankeyDiagram(data.sankey_flows || [], totalBytes, totalFlows);
+        return;
+    }
+
+    if (hintEl) hintEl.innerText = '滑鼠懸停顯示完整細項，點擊長條可即時加入篩選';
+
+    if (mode === 'top_sources') {
+        const items = (data.top_sources || []).map(x => ({
+            key: String(x.src || ''),
+            detail: x.domain || '',
+            bytes: Number(x.bytes || 0),
+            flows: Number(x.flows || 0),
+            packets: Number(x.packets || 0)
+        }));
+        if (summaryBadge) summaryBadge.innerText = `Top ${items.length} 來源 IP · 總計 ${formatBytes(totalBytes)} (${formatNumber(totalFlows)} 筆)`;
+        renderDrillTop10HorizontalBars(items, {
+            title: 'Top 10 最高來源 IP',
+            categoryLabel: '來源 IP',
+            detailLabel: 'Domain / 別名',
+            filterField: 'src_ip',
+            barGradient: 'linear-gradient(90deg, #6366f1, #38bdf8)',
+            accentColor: '#818cf8',
+            totalBytes
+        });
+    } else if (mode === 'top_destinations') {
+        const items = (data.top_destinations || []).map(x => ({
+            key: String(x.dst || ''),
+            detail: x.domain || '',
+            bytes: Number(x.bytes || 0),
+            flows: Number(x.flows || 0),
+            packets: Number(x.packets || 0)
+        }));
+        if (summaryBadge) summaryBadge.innerText = `Top ${items.length} 目的 IP · 總計 ${formatBytes(totalBytes)} (${formatNumber(totalFlows)} 筆)`;
+        renderDrillTop10HorizontalBars(items, {
+            title: 'Top 10 最高目的 IP',
+            categoryLabel: '目的 IP',
+            detailLabel: 'Domain / 別名',
+            filterField: 'dst_ip',
+            barGradient: 'linear-gradient(90deg, #10b981, #34d399)',
+            accentColor: '#34d399',
+            totalBytes
+        });
+    } else if (mode === 'top_ports') {
+        const items = (data.top_ports || []).map(x => ({
+            key: String(x.port !== undefined && x.port !== null ? x.port : ''),
+            detail: x.port_name || '',
+            bytes: Number(x.bytes || 0),
+            flows: Number(x.flows || 0),
+            packets: 0
+        }));
+        if (summaryBadge) summaryBadge.innerText = `Top ${items.length} 連接埠 · 總計 ${formatBytes(totalBytes)} (${formatNumber(totalFlows)} 筆)`;
+        renderDrillTop10HorizontalBars(items, {
+            title: 'Top 10 最高 Port',
+            categoryLabel: 'Port 號',
+            detailLabel: '服務名稱',
+            filterField: 'any_port',
+            barGradient: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+            accentColor: '#fbbf24',
+            totalBytes
+        });
+    } else if (mode === 'top_overview') {
+        if (summaryBadge) summaryBadge.innerText = `Top 10 三維度總覽 · 總計 ${formatBytes(totalBytes)} (${formatNumber(totalFlows)} 筆)`;
+        renderDrillTop10Overview(data, totalBytes);
+    }
+}
+
+function _buildHorizontalBarListHtml(items, opts, compact = false) {
+    if (!items || items.length === 0) {
+        return `<div class="text-center text-muted" style="padding: ${compact ? '48px' : '70px'} 0; font-size: 0.82rem;">目前篩選條件下無統計資料</div>`;
+    }
+    const maxBytes = Math.max(1, ...items.map(i => i.bytes));
+    const denomBytes = Math.max(1, opts.totalBytes || items.reduce((s, i) => s + i.bytes, 0));
+    const labelWidth = compact ? '122px' : '150px';
+    const valWidth = compact ? '68px' : '88px';
+    const barHeight = compact ? '18px' : '22px';
+
+    return `
+        <div style="display: flex; flex-direction: column; gap: ${compact ? '7px' : '9px'};">
+            ${items.slice(0, 10).map((item, idx) => {
+                const widthPct = Math.max(2, (item.bytes / maxBytes) * 100).toFixed(1);
+                const sharePct = ((item.bytes / denomBytes) * 100).toFixed(1);
+                const tipHtml = encodeURIComponent(`
+                    <div style="font-weight:700;color:${opts.accentColor};margin-bottom:4px;">#${idx + 1} ${escapeHtml(opts.categoryLabel)}</div>
+                    <div style="font-family:var(--font-mono);font-size:0.86rem;color:#f8fafc;">${escapeHtml(item.key)}</div>
+                    ${item.detail ? `<div style="margin-top:3px;color:#cbd5e1;">${escapeHtml(opts.detailLabel)}：<strong>${escapeHtml(item.detail)}</strong></div>` : `<div style="margin-top:3px;color:#64748b;">${escapeHtml(opts.detailLabel)}：(無)</div>`}
+                    <div style="margin-top:4px;color:#34d399;">流量：<strong>${formatBytes(item.bytes)}</strong> (${sharePct}%) · 連線：<strong>${formatNumber(item.flows)} 筆</strong></div>
+                    ${item.packets > 0 ? `<div style="color:#94a3b8;font-size:0.74rem;">封包數：${formatNumber(item.packets)}</div>` : ''}
+                    <div style="margin-top:4px;font-size:0.72rem;color:#94a3b8;">點擊此長條可即時加入篩選條件</div>
+                `);
+                return `
+                    <div class="drill-hbar-row" data-field="${opts.filterField}" data-val="${escapeHtml(item.key)}" data-tip="${tipHtml}" style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 2px 4px; border-radius: 6px; transition: background 0.15s;">
+                        <div style="width: ${labelWidth}; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: ${compact ? '0.76rem' : '0.82rem'}; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${escapeHtml(item.key)}
+                        </div>
+                        <div style="flex: 1; height: ${barHeight}; background: rgba(255, 255, 255, 0.06); border-radius: 5px; overflow: hidden; position: relative;">
+                            <div style="width: ${widthPct}%; height: 100%; background: ${opts.barGradient}; border-radius: 5px; transition: width 0.35s ease; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);"></div>
+                        </div>
+                        <div style="width: ${valWidth}; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: ${compact ? '0.74rem' : '0.8rem'}; color: #cbd5e1; white-space: nowrap;">
+                            ${formatBytes(item.bytes)}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function _bindHorizontalBarEvents(container) {
+    const tooltip = document.getElementById('drill-sankey-tooltip');
+    const showTip = (e, encodedHtml) => {
+        if (!tooltip) return;
+        tooltip.innerHTML = decodeURIComponent(encodedHtml);
+        tooltip.style.display = 'block';
+        const left = Math.min(window.innerWidth - 380, e.clientX + 14);
+        const top = Math.min(window.innerHeight - 140, e.clientY + 14);
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.style.top = `${Math.max(10, top)}px`;
+    };
+    const hideTip = () => {
+        if (tooltip) tooltip.style.display = 'none';
+    };
+
+    container.querySelectorAll('.drill-hbar-row').forEach(row => {
+        row.addEventListener('mouseenter', (e) => {
+            row.style.background = 'rgba(129, 140, 248, 0.14)';
+            showTip(e, row.getAttribute('data-tip'));
+        });
+        row.addEventListener('mousemove', (e) => showTip(e, row.getAttribute('data-tip')));
+        row.addEventListener('mouseleave', () => {
+            row.style.background = 'transparent';
+            hideTip();
+        });
+        row.addEventListener('click', () => {
+            hideTip();
+            applySankeyNodeFilter(row.getAttribute('data-field'), row.getAttribute('data-val'));
+        });
+    });
+}
+
+function renderDrillTop10HorizontalBars(items, opts) {
+    const container = document.getElementById('drill-sankey-container');
+    if (!container) return;
+    container.innerHTML = `
+        <div style="padding: 4px 6px;">
+            ${_buildHorizontalBarListHtml(items, opts, false)}
+        </div>
+    `;
+    _bindHorizontalBarEvents(container);
+}
+
+function renderDrillTop10Overview(data, totalBytes) {
+    const container = document.getElementById('drill-sankey-container');
+    if (!container) return;
+
+    const srcItems = (data.top_sources || []).map(x => ({
+        key: String(x.src || ''),
+        detail: x.domain || '',
+        bytes: Number(x.bytes || 0),
+        flows: Number(x.flows || 0),
+        packets: Number(x.packets || 0)
+    }));
+    const dstItems = (data.top_destinations || []).map(x => ({
+        key: String(x.dst || ''),
+        detail: x.domain || '',
+        bytes: Number(x.bytes || 0),
+        flows: Number(x.flows || 0),
+        packets: Number(x.packets || 0)
+    }));
+    const portItems = (data.top_ports || []).map(x => ({
+        key: String(x.port !== undefined && x.port !== null ? x.port : ''),
+        detail: x.port_name || '',
+        bytes: Number(x.bytes || 0),
+        flows: Number(x.flows || 0),
+        packets: 0
+    }));
+
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 14px;">
+            <div style="background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(99, 102, 241, 0.28); border-radius: 10px; padding: 12px;">
+                <div style="font-size: 0.84rem; font-weight: 700; color: #818cf8; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Top 10 來源 IP</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 400;">依傳輸量</span>
+                </div>
+                ${_buildHorizontalBarListHtml(srcItems, {
+                    categoryLabel: '來源 IP',
+                    detailLabel: 'Domain / 別名',
+                    filterField: 'src_ip',
+                    barGradient: 'linear-gradient(90deg, #6366f1, #38bdf8)',
+                    accentColor: '#818cf8',
+                    totalBytes
+                }, true)}
+            </div>
+            <div style="background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(16, 185, 129, 0.28); border-radius: 10px; padding: 12px;">
+                <div style="font-size: 0.84rem; font-weight: 700; color: #34d399; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Top 10 目的 IP</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 400;">依傳輸量</span>
+                </div>
+                ${_buildHorizontalBarListHtml(dstItems, {
+                    categoryLabel: '目的 IP',
+                    detailLabel: 'Domain / 別名',
+                    filterField: 'dst_ip',
+                    barGradient: 'linear-gradient(90deg, #10b981, #34d399)',
+                    accentColor: '#34d399',
+                    totalBytes
+                }, true)}
+            </div>
+            <div style="background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(245, 158, 11, 0.28); border-radius: 10px; padding: 12px;">
+                <div style="font-size: 0.84rem; font-weight: 700; color: #fbbf24; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Top 10 Port</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 400;">依傳輸量</span>
+                </div>
+                ${_buildHorizontalBarListHtml(portItems, {
+                    categoryLabel: 'Port 號',
+                    detailLabel: '服務名稱',
+                    filterField: 'any_port',
+                    barGradient: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                    accentColor: '#fbbf24',
+                    totalBytes
+                }, true)}
+            </div>
+        </div>
+    `;
+    _bindHorizontalBarEvents(container);
+}
+
+function applySankeyNodeFilter(field, val) {
+    if (!field || val === undefined || val === null || val === '') return;
+    const strVal = String(val);
+    const exists = (state.anomaliesFilters.conditions || []).some(c => c.field === field && String(c.val) === strVal);
+    if (!exists) {
+        state.anomaliesFilters.conditions.push({
+            id: genConditionId(),
+            field: field,
+            ipType: 'custom',
+            val: strVal
+        });
+        renderConditions('anomalies');
+        state.anomaliesPagination.offset = 0;
+        fetchAnomalousReport();
+        showToast(`已加入篩選條件：${field} = ${strVal}`, 'info', '桑基圖互動篩選');
+    }
+}
+
+function renderDrillSankeyDiagram(flows, totalBytes, totalFlows) {
+    const container = document.getElementById('drill-sankey-container');
+    const summaryBadge = document.getElementById('drill-sankey-summary');
+    const tooltip = document.getElementById('drill-sankey-tooltip');
+    if (!container) return;
+
+    if (!flows || flows.length === 0) {
+        if (summaryBadge) summaryBadge.innerText = '無流向資料';
+        container.innerHTML = `<div class="text-center text-muted py-5" style="padding: 70px 0;">目前篩選條件下尚無可繪製的流量流向資料</div>`;
+        return;
+    }
+
+    // Limit to top 18 flows for visual clarity
+    const topFlows = flows.slice(0, 18);
+    const shownBytes = topFlows.reduce((acc, f) => acc + (f.bytes || 0), 0);
+    if (summaryBadge) {
+        summaryBadge.innerText = `Top ${topFlows.length} 條主要流向 · 總計 ${formatBytes(totalBytes || shownBytes)} (${formatNumber(totalFlows || 0)} 筆)`;
+    }
+
+    // Aggregate nodes per column: Col 0 (src), Col 1 (dport), Col 2 (dst)
+    const srcMap = new Map();
+    const portMap = new Map();
+    const dstMap = new Map();
+
+    topFlows.forEach(f => {
+        const b = Math.max(1, Number(f.bytes) || 0);
+        const fl = Number(f.flows) || 0;
+        const srcKey = f.src || 'Unknown';
+        const portKey = String(f.dport !== undefined && f.dport !== null ? f.dport : 0);
+        const dstKey = f.dst || 'Unknown';
+
+        if (!srcMap.has(srcKey)) srcMap.set(srcKey, { key: srcKey, label: f.src_label || '', bytes: 0, flows: 0 });
+        srcMap.get(srcKey).bytes += b;
+        srcMap.get(srcKey).flows += fl;
+
+        if (!portMap.has(portKey)) portMap.set(portKey, { key: portKey, label: f.dport_name || '', bytes: 0, flows: 0 });
+        portMap.get(portKey).bytes += b;
+        portMap.get(portKey).flows += fl;
+
+        if (!dstMap.has(dstKey)) dstMap.set(dstKey, { key: dstKey, label: f.dst_label || '', bytes: 0, flows: 0 });
+        dstMap.get(dstKey).bytes += b;
+        dstMap.get(dstKey).flows += fl;
+    });
+
+    const srcNodes = Array.from(srcMap.values()).sort((a, b) => b.bytes - a.bytes);
+    const portNodes = Array.from(portMap.values()).sort((a, b) => b.bytes - a.bytes);
+    const dstNodes = Array.from(dstMap.values()).sort((a, b) => b.bytes - a.bytes);
+
+    const maxCount = Math.max(srcNodes.length, portNodes.length, dstNodes.length);
+    const svgWidth = Math.max(760, container.clientWidth || 1080);
+    const svgHeight = Math.max(270, Math.min(380, maxCount * 30 + 60));
+    const topPad = 34;
+    const bottomPad = 18;
+    const usableHeight = svgHeight - topPad - bottomPad;
+    const nodeWidth = 14;
+    const leftMargin = 205;
+    const rightMargin = 215;
+    const colX = [
+        leftMargin,
+        Math.round(leftMargin + (svgWidth - leftMargin - rightMargin - nodeWidth) / 2),
+        svgWidth - rightMargin - nodeWidth
+    ];
+
+    const srcColors = ['#6366f1', '#3b82f6', '#0ea5e9', '#38bdf8', '#818cf8', '#60a5fa'];
+    const portColors = ['#f59e0b', '#fbbf24', '#a855f7', '#ec4899', '#f97316', '#c084fc'];
+    const dstColors = ['#10b981', '#14b8a6', '#ef4444', '#f43f5e', '#34d399', '#fb7185'];
+
+    function layoutColumn(nodes, x, palette) {
+        const gap = Math.min(12, Math.max(5, Math.floor(80 / Math.max(1, nodes.length))));
+        const totalGap = gap * Math.max(0, nodes.length - 1);
+        const availH = Math.max(60, usableHeight - totalGap);
+        const sumB = nodes.reduce((s, n) => s + n.bytes, 0) || 1;
+        const minH = 12;
+
+        let rawHeights = nodes.map(n => Math.max(minH, (n.bytes / sumB) * availH));
+        const sumRaw = rawHeights.reduce((a, b) => a + b, 0);
+        if (sumRaw > availH) {
+            const scale = availH / sumRaw;
+            rawHeights = rawHeights.map(h => Math.max(6, h * scale));
+        }
+
+        const totalNodeH = rawHeights.reduce((a, b) => a + b, 0) + totalGap;
+        let curY = topPad + Math.max(0, (usableHeight - totalNodeH) / 2);
+
+        nodes.forEach((n, idx) => {
+            n.x = x;
+            n.y = curY;
+            n.h = rawHeights[idx];
+            n.color = palette[idx % palette.length];
+            n.outOffset = 0;
+            n.inOffset = 0;
+            curY += n.h + gap;
+        });
+    }
+
+    layoutColumn(srcNodes, colX[0], srcColors);
+    layoutColumn(portNodes, colX[1], portColors);
+    layoutColumn(dstNodes, colX[2], dstColors);
+
+    // Aggregate links for Col0->Col1 and Col1->Col2
+    const links01Map = new Map();
+    const links12Map = new Map();
+    topFlows.forEach(f => {
+        const b = Math.max(1, Number(f.bytes) || 0);
+        const fl = Number(f.flows) || 0;
+        const sKey = f.src || 'Unknown';
+        const pKey = String(f.dport !== undefined && f.dport !== null ? f.dport : 0);
+        const dKey = f.dst || 'Unknown';
+
+        const k01 = `${sKey}__${pKey}`;
+        if (!links01Map.has(k01)) links01Map.set(k01, { source: srcMap.get(sKey), target: portMap.get(pKey), bytes: 0, flows: 0 });
+        links01Map.get(k01).bytes += b;
+        links01Map.get(k01).flows += fl;
+
+        const k12 = `${pKey}__${dKey}`;
+        if (!links12Map.has(k12)) links12Map.set(k12, { source: portMap.get(pKey), target: dstMap.get(dKey), bytes: 0, flows: 0 });
+        links12Map.get(k12).bytes += b;
+        links12Map.get(k12).flows += fl;
+    });
+
+    const links01 = Array.from(links01Map.values()).sort((a, b) => (a.source.y - b.source.y) || (a.target.y - b.target.y));
+    const links12 = Array.from(links12Map.values()).sort((a, b) => (a.source.y - b.source.y) || (a.target.y - b.target.y));
+
+    let defsHtml = '';
+    let linksHtml = '';
+    let gradIdx = 0;
+
+    function buildLinkPaths(links, stageLabel) {
+        links.forEach(l => {
+            const srcH = Math.max(2, (l.bytes / (l.source.bytes || 1)) * l.source.h);
+            const tgtH = Math.max(2, (l.bytes / (l.target.bytes || 1)) * l.target.h);
+            const y0 = l.source.y + l.source.outOffset;
+            const y1 = l.target.y + l.target.inOffset;
+            l.source.outOffset += srcH;
+            l.target.inOffset += tgtH;
+
+            const x0 = l.source.x + nodeWidth;
+            const x1 = l.target.x;
+            const mx = (x0 + x1) / 2;
+
+            const pathD = `M ${x0} ${y0} C ${mx} ${y0}, ${mx} ${y1}, ${x1} ${y1} L ${x1} ${y1 + tgtH} C ${mx} ${y1 + tgtH}, ${mx} ${y0 + srcH}, ${x0} ${y0 + srcH} Z`;
+            const gId = `sankeyGrad_${gradIdx++}`;
+            defsHtml += `
+                <linearGradient id="${gId}" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="${l.source.color}" stop-opacity="0.52"/>
+                    <stop offset="100%" stop-color="${l.target.color}" stop-opacity="0.52"/>
+                </linearGradient>`;
+
+            const sDesc = l.source.label ? `${l.source.key} (${l.source.label})` : l.source.key;
+            const tDesc = l.target.label ? `${l.target.key} (${l.target.label})` : l.target.key;
+            const pct = shownBytes > 0 ? ((l.bytes / shownBytes) * 100).toFixed(1) : '0.0';
+            const tipText = encodeURIComponent(`<div style="font-weight:700;color:#a5b4fc;margin-bottom:4px;">${stageLabel}</div><div style="font-family:var(--font-mono);">${escapeHtml(sDesc)} ➔ ${escapeHtml(tDesc)}</div><div style="margin-top:4px;color:#34d399;">流量：<strong>${formatBytes(l.bytes)}</strong> (${pct}%) · 連線：<strong>${formatNumber(l.flows)} 筆</strong></div>`);
+
+            linksHtml += `<path d="${pathD}" fill="url(#${gId})" class="sankey-link" data-tip="${tipText}" style="cursor:pointer; transition: opacity 0.18s;" />`;
+        });
+    }
+
+    buildLinkPaths(links01, '來源 IP ➔ 目的 Port');
+    buildLinkPaths(links12, '目的 Port ➔ 目的 IP');
+
+    function truncText(str, maxLen) {
+        if (!str) return '';
+        return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
+    }
+
+    let nodesHtml = '';
+    function buildNodes(nodes, colIndex, filterField) {
+        nodes.forEach(n => {
+            const pct = shownBytes > 0 ? ((n.bytes / shownBytes) * 100).toFixed(1) : '0.0';
+            const colTitle = colIndex === 0 ? '來源 IP' : (colIndex === 1 ? '目的 Port' : '目的 IP');
+            const displayMain = colIndex === 1
+                ? `Port ${n.key}${n.label ? ` (${truncText(n.label, 12)})` : ''}`
+                : n.key;
+            const displaySub = colIndex === 1
+                ? `${formatBytes(n.bytes)}`
+                : (n.label ? `${truncText(n.label, 20)} · ${formatBytes(n.bytes)}` : formatBytes(n.bytes));
+
+            const tipText = encodeURIComponent(`<div style="font-weight:700;color:${n.color};margin-bottom:3px;">${colTitle}</div><div style="font-family:var(--font-mono);font-size:0.84rem;">${escapeHtml(n.key)}${n.label ? ` (${escapeHtml(n.label)})` : ''}</div><div style="margin-top:4px;color:#e2e8f0;">流量：<strong>${formatBytes(n.bytes)}</strong> (${pct}%) · 連線：<strong>${formatNumber(n.flows)} 筆</strong></div><div style="margin-top:4px;font-size:0.72rem;color:#94a3b8;">點擊此節點可即時加入篩選條件</div>`);
+
+            const midY = n.y + n.h / 2;
+            let textHtml = '';
+            if (colIndex === 0) {
+                textHtml = `
+                    <text x="${n.x - 8}" y="${midY - (n.h >= 22 ? 3 : -4)}" text-anchor="end" fill="#f1f5f9" font-size="11.5" font-family="var(--font-mono)" font-weight="600">${escapeHtml(truncText(displayMain, 22))}</text>
+                    ${n.h >= 22 ? `<text x="${n.x - 8}" y="${midY + 11}" text-anchor="end" fill="#94a3b8" font-size="10">${escapeHtml(displaySub)}</text>` : ''}
+                `;
+            } else if (colIndex === 1) {
+                textHtml = `
+                    <text x="${n.x + nodeWidth + 8}" y="${midY - (n.h >= 22 ? 3 : -4)}" text-anchor="start" fill="#fde68a" font-size="11.5" font-family="var(--font-mono)" font-weight="600">${escapeHtml(displayMain)}</text>
+                    ${n.h >= 22 ? `<text x="${n.x + nodeWidth + 8}" y="${midY + 11}" text-anchor="start" fill="#94a3b8" font-size="10">${escapeHtml(displaySub)}</text>` : ''}
+                `;
+            } else {
+                textHtml = `
+                    <text x="${n.x + nodeWidth + 8}" y="${midY - (n.h >= 22 ? 3 : -4)}" text-anchor="start" fill="#f1f5f9" font-size="11.5" font-family="var(--font-mono)" font-weight="600">${escapeHtml(truncText(displayMain, 22))}</text>
+                    ${n.h >= 22 ? `<text x="${n.x + nodeWidth + 8}" y="${midY + 11}" text-anchor="start" fill="#94a3b8" font-size="10">${escapeHtml(displaySub)}</text>` : ''}
+                `;
+            }
+
+            nodesHtml += `
+                <g class="sankey-node" data-field="${filterField}" data-val="${escapeHtml(n.key)}" data-tip="${tipText}" style="cursor:pointer;">
+                    <rect x="${n.x}" y="${n.y}" width="${nodeWidth}" height="${n.h}" rx="3" fill="${n.color}" stroke="rgba(255,255,255,0.22)" stroke-width="1"></rect>
+                    ${textHtml}
+                </g>
+            `;
+        });
+    }
+
+    buildNodes(srcNodes, 0, 'src_ip');
+    buildNodes(portNodes, 1, 'dport');
+    buildNodes(dstNodes, 2, 'dst_ip');
+
+    container.innerHTML = `
+        <svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width: 100%; height: ${svgHeight}px; min-width: 680px; display: block;">
+            <defs>${defsHtml}</defs>
+            <text x="${colX[0] + nodeWidth / 2}" y="16" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="700">來源 IP (別名)</text>
+            <text x="${colX[1] + nodeWidth / 2}" y="16" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700">目的 Port (服務)</text>
+            <text x="${colX[2] + nodeWidth / 2}" y="16" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">目的 IP (Domain / 別名)</text>
+            <g class="sankey-links-layer">${linksHtml}</g>
+            <g class="sankey-nodes-layer">${nodesHtml}</g>
+        </svg>
+    `;
+
+    // Bind hover tooltip & node click filter
+    const showTip = (e, encodedHtml) => {
+        if (!tooltip) return;
+        tooltip.innerHTML = decodeURIComponent(encodedHtml);
+        tooltip.style.display = 'block';
+        const left = Math.min(window.innerWidth - 380, e.clientX + 14);
+        const top = Math.min(window.innerHeight - 130, e.clientY + 14);
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.style.top = `${Math.max(10, top)}px`;
+    };
+    const hideTip = () => {
+        if (tooltip) tooltip.style.display = 'none';
+    };
+
+    container.querySelectorAll('.sankey-link').forEach(el => {
+        el.addEventListener('mouseenter', (e) => {
+            container.querySelectorAll('.sankey-link').forEach(o => o.style.opacity = '0.28');
+            el.style.opacity = '0.95';
+            showTip(e, el.getAttribute('data-tip'));
+        });
+        el.addEventListener('mousemove', (e) => showTip(e, el.getAttribute('data-tip')));
+        el.addEventListener('mouseleave', () => {
+            container.querySelectorAll('.sankey-link').forEach(o => o.style.opacity = '1');
+            hideTip();
+        });
+    });
+
+    container.querySelectorAll('.sankey-node').forEach(el => {
+        el.addEventListener('mouseenter', (e) => showTip(e, el.getAttribute('data-tip')));
+        el.addEventListener('mousemove', (e) => showTip(e, el.getAttribute('data-tip')));
+        el.addEventListener('mouseleave', hideTip);
+        el.addEventListener('click', () => {
+            hideTip();
+            applySankeyNodeFilter(el.getAttribute('data-field'), el.getAttribute('data-val'));
+        });
+    });
 }
 
 // Render Anomalous Bar Chart helper
@@ -4880,7 +5321,7 @@ async function submitForceChangePassword() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '更新失敗');
         
-        alert('密碼已成功設定！歡迎使用 NetFlow Collector 系統。');
+        alert('密碼已成功設定！歡迎使用 Super Flow 系統。');
         if (els.modalMustChangePassword) {
             els.modalMustChangePassword.classList.remove('active');
         }
@@ -5631,6 +6072,21 @@ function initSmartDiagnosticsUI() {
     const btnClearFilter = document.getElementById('btn-diag-clear-filter');
     const btnBackToSmart = document.getElementById('btn-back-to-smart-diag');
     const btnClearScenario = document.getElementById('btn-tier2-clear-scenario');
+    const statusFilterSel = document.getElementById('diag-filter-status');
+
+    if (statusFilterSel) {
+        statusFilterSel.addEventListener('change', () => {
+            diagState.incidentStatus = statusFilterSel.value || '';
+            renderFilteredEquipmentList();
+        });
+    }
+    const btnResetTier3Cols = document.getElementById('btn-reset-tier3-cols');
+    if (btnResetTier3Cols) {
+        btnResetTier3Cols.addEventListener('click', () => {
+            resetTier3Columns();
+        });
+    }
+    renderTier3TableHeader();
 
     if (btnSmart) btnSmart.addEventListener('click', () => switchAnomaliesMode('smart'));
     if (btnLegacy) btnLegacy.addEventListener('click', () => switchAnomaliesMode('legacy'));
@@ -5707,6 +6163,9 @@ function initSmartDiagnosticsUI() {
             diagState.scenarioName = '';
             diagState.category = '';
             diagState.hostIp = '';
+            diagState.incidentStatus = '';
+            const statusSel = document.getElementById('diag-filter-status');
+            if (statusSel) statusSel.value = '';
             executeRefreshWithFeedback(
                 btnRefresh,
                 () => fetchSmartDiagnostics(),
@@ -5857,43 +6316,70 @@ function initSmartDiagnosticsUI() {
         });
     }
 
+    // Drill-down details modal controls
+    const btnCloseDrillModal = document.getElementById('btn-close-drill-modal');
+    if (btnCloseDrillModal) btnCloseDrillModal.addEventListener('click', closeDrillDetailsModal);
+    const drillModal = document.getElementById('modal-drill-details');
+    if (drillModal) {
+        drillModal.addEventListener('click', (e) => {
+            if (e.target === drillModal) closeDrillDetailsModal();
+        });
+    }
+    const btnToggleSankey = document.getElementById('btn-toggle-drill-sankey');
+    if (btnToggleSankey) {
+        btnToggleSankey.addEventListener('click', () => {
+            const body = document.getElementById('drill-sankey-body');
+            if (!body) return;
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? 'block' : 'none';
+            btnToggleSankey.innerHTML = isHidden
+                ? '<i data-lucide="chevron-up" style="width: 13px; height: 13px;"></i><span>收合圖表</span>'
+                : '<i data-lucide="chevron-down" style="width: 13px; height: 13px;"></i><span>展開圖表</span>';
+            if (window.lucide) window.lucide.createIcons();
+        });
+    }
+    const drillChartModeSelect = document.getElementById('drill-chart-mode-select');
+    if (drillChartModeSelect) {
+        drillChartModeSelect.addEventListener('change', () => {
+            const body = document.getElementById('drill-sankey-body');
+            if (body && body.style.display === 'none') {
+                body.style.display = 'block';
+                if (btnToggleSankey) {
+                    btnToggleSankey.innerHTML = '<i data-lucide="chevron-up" style="width: 13px; height: 13px;"></i><span>收合圖表</span>';
+                    if (window.lucide) window.lucide.createIcons();
+                }
+            }
+            renderActiveDrillChart();
+        });
+    }
+
     // Load initial threat intel badge count
     fetchThreatIntelCache();
 }
 
-function switchAnomaliesMode(mode) {
-    diagState.mode = mode;
-    const smartPanel = document.getElementById('anomalies-smart-panel');
-    const legacyPanel = document.getElementById('anomalies-legacy-panel');
-    const btnSmart = document.getElementById('btn-anomalies-mode-smart');
-    const btnLegacy = document.getElementById('btn-anomalies-mode-legacy');
+function closeDrillDetailsModal() {
+    const modal = document.getElementById('modal-drill-details');
+    if (modal) modal.classList.remove('active');
+    const tooltip = document.getElementById('drill-sankey-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
+}
 
-    if (mode === 'smart') {
-        if (smartPanel) smartPanel.style.display = 'block';
-        if (legacyPanel) legacyPanel.style.display = 'none';
-        if (btnSmart) btnSmart.classList.add('active');
-        if (btnLegacy) btnLegacy.classList.remove('active');
-        const drillBanner = document.getElementById('anomalies-drill-banner');
-        if (drillBanner) drillBanner.style.display = 'none';
-        fetchSmartDiagnostics();
-    } else {
-        if (smartPanel) smartPanel.style.display = 'none';
-        if (legacyPanel) legacyPanel.style.display = 'block';
-        if (btnSmart) btnSmart.classList.remove('active');
-        if (btnLegacy) btnLegacy.classList.add('active');
+function switchAnomaliesMode(mode) {
+    diagState.mode = 'smart';
+    const smartPanel = document.getElementById('anomalies-smart-panel');
+    if (smartPanel) smartPanel.style.display = 'block';
+    if (mode === 'legacy') {
+        const modal = document.getElementById('modal-drill-details');
+        if (modal) modal.classList.add('active');
         fetchAnomalousReport();
-        fetchAnomalousReportStats();
+    } else {
+        fetchSmartDiagnostics();
     }
     if (window.lucide) window.lucide.createIcons();
 }
 
 function refreshAnomaliesActiveView() {
-    if (diagState.mode === 'legacy') {
-        fetchAnomalousReport();
-        fetchAnomalousReportStats();
-    } else {
-        fetchSmartDiagnostics();
-    }
+    fetchSmartDiagnostics();
 }
 
 async function fetchSmartDiagnostics() {
@@ -6245,11 +6731,219 @@ function getSeverityBadgeHtml(sev) {
 
 let _filteredEventsList = [];
 
+const TIER3_COL_ORDER_STORAGE_KEY = 'superflow_tier3_col_order_v1';
+const TIER3_COL_WIDTH_STORAGE_KEY = 'superflow_tier3_col_widths_v1';
+
+const TIER3_COLUMNS_META = {
+    host:     { key: 'host',     label: 'IP',                         defaultPct: '13%', minPx: 105, align: 'left' },
+    athenac:  { key: 'athenac',  label: 'AtheNAC 資產識別',           defaultPct: '14%', minPx: 110, align: 'left' },
+    location: { key: 'location', label: '實體網路位置 (Switch/Port)', defaultPct: '14%', minPx: 115, align: 'left' },
+    severity: { key: 'severity', label: '風險等級',                   defaultPct: '10%', minPx: 95,  align: 'center' },
+    status:   { key: 'status',   label: '處理狀態',                   defaultPct: '11%', minPx: 100, align: 'center' },
+    scenario: { key: 'scenario', label: '風險名稱',                   defaultPct: '15%', minPx: 120, align: 'left' },
+    scale:    { key: 'scale',    label: '異常規模 / 最後時間',         defaultPct: '11%', minPx: 105, align: 'right' },
+    actions:  { key: 'actions',  label: '處置操作',                   defaultPct: '11%', minPx: 115, align: 'center' }
+};
+const TIER3_DEFAULT_COL_ORDER = ['host', 'athenac', 'location', 'severity', 'status', 'scenario', 'scale', 'actions'];
+
+function getTier3ColOrder() {
+    try {
+        const raw = localStorage.getItem(TIER3_COL_ORDER_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length === TIER3_DEFAULT_COL_ORDER.length &&
+                TIER3_DEFAULT_COL_ORDER.every(k => parsed.includes(k))) {
+                return parsed;
+            }
+        }
+    } catch (e) {}
+    return [...TIER3_DEFAULT_COL_ORDER];
+}
+
+function getTier3ColWidths() {
+    try {
+        const raw = localStorage.getItem(TIER3_COL_WIDTH_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') return parsed;
+        }
+    } catch (e) {}
+    return {};
+}
+
+function saveTier3ColOrder(order) {
+    try {
+        localStorage.setItem(TIER3_COL_ORDER_STORAGE_KEY, JSON.stringify(order));
+    } catch (e) {}
+}
+
+function saveTier3ColWidths(widths) {
+    try {
+        localStorage.setItem(TIER3_COL_WIDTH_STORAGE_KEY, JSON.stringify(widths));
+    } catch (e) {}
+}
+
+function resetTier3Columns() {
+    try {
+        localStorage.removeItem(TIER3_COL_ORDER_STORAGE_KEY);
+        localStorage.removeItem(TIER3_COL_WIDTH_STORAGE_KEY);
+    } catch (e) {}
+    const tableEl = document.getElementById('diag-events-table');
+    if (tableEl) tableEl.style.width = '100%';
+    renderTier3TableHeader();
+    renderFilteredEquipmentList();
+    showToast('已還原欄位預設順序與寬度', 'info', '欄位已重設');
+}
+
+let _tier3DraggedColKey = null;
+
+function renderTier3TableHeader() {
+    const theadTr = document.getElementById('diag-events-thead-tr');
+    const colgroup = document.getElementById('diag-events-colgroup');
+    if (!theadTr) return;
+
+    const order = getTier3ColOrder();
+    const widths = getTier3ColWidths();
+
+    if (colgroup) {
+        colgroup.innerHTML = order.map(k => {
+            const meta = TIER3_COLUMNS_META[k];
+            const w = widths[k] ? `${widths[k]}px` : meta.defaultPct;
+            return `<col data-col-key="${k}" style="width: ${w};">`;
+        }).join('');
+    }
+
+    theadTr.innerHTML = order.map(k => {
+        const meta = TIER3_COLUMNS_META[k];
+        const w = widths[k] ? `${widths[k]}px` : meta.defaultPct;
+        const pad = (meta.align === 'center') ? '12px 10px' : '12px 12px';
+        return `
+            <th class="tier3-th" draggable="true" data-col-key="${k}" title="拖曳標題可調整欄位順序；拖拉右側邊線可調整欄寬" style="width: ${w}; padding: ${pad}; text-align: ${meta.align}; font-weight: 600; color: var(--text-muted); background: #1f2937;">
+                <span class="tier3-th-inner">
+                    <span class="tier3-grip">⋮⋮</span>
+                    <span>${escapeHtml(meta.label)}</span>
+                </span>
+                <div class="tier3-col-resizer" data-resize-key="${k}" title="左右拖拉調整欄寬"></div>
+            </th>
+        `;
+    }).join('');
+
+    // Bind column drag-and-drop reordering
+    theadTr.querySelectorAll('th.tier3-th').forEach(th => {
+        th.addEventListener('dragstart', (e) => {
+            if (th.getAttribute('data-resizing') === '1') {
+                e.preventDefault();
+                return;
+            }
+            _tier3DraggedColKey = th.getAttribute('data-col-key');
+            th.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', _tier3DraggedColKey);
+            }
+        });
+
+        th.addEventListener('dragend', () => {
+            th.classList.remove('dragging');
+            theadTr.querySelectorAll('th.tier3-th').forEach(el => el.classList.remove('drag-over'));
+            _tier3DraggedColKey = null;
+        });
+
+        th.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            const targetKey = th.getAttribute('data-col-key');
+            if (_tier3DraggedColKey && targetKey !== _tier3DraggedColKey) {
+                th.classList.add('drag-over');
+            }
+        });
+
+        th.addEventListener('dragleave', () => {
+            th.classList.remove('drag-over');
+        });
+
+        th.addEventListener('drop', (e) => {
+            e.preventDefault();
+            th.classList.remove('drag-over');
+            const targetKey = th.getAttribute('data-col-key');
+            const srcKey = _tier3DraggedColKey || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
+            if (!srcKey || !targetKey || srcKey === targetKey) return;
+
+            const curOrder = getTier3ColOrder();
+            const fromIdx = curOrder.indexOf(srcKey);
+            const toIdx = curOrder.indexOf(targetKey);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            curOrder.splice(fromIdx, 1);
+            curOrder.splice(toIdx, 0, srcKey);
+            saveTier3ColOrder(curOrder);
+            renderTier3TableHeader();
+            renderFilteredEquipmentList();
+        });
+    });
+
+    // Bind column width resizers
+    theadTr.querySelectorAll('.tier3-col-resizer').forEach(handle => {
+        handle.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const colKey = handle.getAttribute('data-resize-key');
+            const th = handle.closest('th.tier3-th');
+            if (!th || !colKey) return;
+
+            th.setAttribute('data-resizing', '1');
+            th.draggable = false;
+            handle.classList.add('resizing');
+
+            // Snapshot all current column pixel widths so resizing one column doesn't jump others
+            const curWidths = getTier3ColWidths();
+            theadTr.querySelectorAll('th.tier3-th').forEach(hEl => {
+                const k = hEl.getAttribute('data-col-key');
+                const wPx = Math.round(hEl.getBoundingClientRect().width);
+                curWidths[k] = wPx;
+                hEl.style.width = `${wPx}px`;
+                const cEl = colgroup ? colgroup.querySelector(`col[data-col-key="${k}"]`) : null;
+                if (cEl) cEl.style.width = `${wPx}px`;
+            });
+
+            const startX = e.clientX;
+            const startWidth = curWidths[colKey] || Math.round(th.getBoundingClientRect().width);
+            const minWidth = (TIER3_COLUMNS_META[colKey] && TIER3_COLUMNS_META[colKey].minPx) || 80;
+            const colEl = colgroup ? colgroup.querySelector(`col[data-col-key="${colKey}"]`) : null;
+
+            const onMouseMove = (moveEv) => {
+                const delta = moveEv.clientX - startX;
+                const newW = Math.max(minWidth, startWidth + delta);
+                curWidths[colKey] = newW;
+                th.style.width = `${newW}px`;
+                if (colEl) colEl.style.width = `${newW}px`;
+            };
+
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                handle.classList.remove('resizing');
+                th.removeAttribute('data-resizing');
+                th.draggable = true;
+                saveTier3ColWidths(curWidths);
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    });
+}
+
 function renderFilteredEquipmentList() {
     const tbody = document.getElementById('diag-events-tbody');
     if (!tbody) return;
+    const theadTr = document.getElementById('diag-events-thead-tr');
+    if (theadTr && !theadTr.querySelector('.tier3-col-resizer')) {
+        renderTier3TableHeader();
+    }
+    const colOrder = getTier3ColOrder();
 
-    // Filter events by severity, scenarioId, and hostIp
+    // Filter events by severity, scenarioId, hostIp, and incidentStatus
     let filtered = diagState.events || [];
     if (diagState.severity) {
         filtered = filtered.filter(ev => ev.severity === diagState.severity);
@@ -6259,6 +6953,9 @@ function renderFilteredEquipmentList() {
     }
     if (diagState.hostIp) {
         filtered = filtered.filter(ev => ev.host_ip === diagState.hostIp);
+    }
+    if (diagState.incidentStatus) {
+        filtered = filtered.filter(ev => (ev.incident_status || 'open') === diagState.incidentStatus);
     }
 
     _filteredEventsList = filtered;
@@ -6273,13 +6970,14 @@ function renderFilteredEquipmentList() {
         const dText = (diagState.timeRange === 'custom' || diagState.timeRange === 'today') && diagState.targetDate
             ? `指定日期 ${diagState.targetDate}`
             : (diagState.timeLabel || '當前時間週期');
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-5" style="padding: 40px 0;">所選條件與【${escapeHtml(dText)}】下無任何情境異常設備。</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-5" style="padding: 40px 0;">所選條件與【${escapeHtml(dText)}】下無任何情境異常設備。</td></tr>`;
         if (window.lucide) window.lucide.createIcons();
         return;
     }
 
     tbody.innerHTML = filtered.map((ev, idx) => {
         const nac = ev.athenac || {};
+        const contact = ev.asset_contact || {};
         const hostTitle = ev.host_alias ? `${escapeHtml(ev.host_alias)}` : (nac.hostname ? escapeHtml(nac.hostname) : escapeHtml(ev.host_ip));
         const nacHostName = nac.hostname ? escapeHtml(nac.hostname) : '<span class="text-muted">未登記名稱</span>';
         const nacMac = nac.mac ? `<code>${escapeHtml(nac.mac)}</code>` : '<span class="text-muted">無 MAC 紀錄</span>';
@@ -6293,64 +6991,190 @@ function renderFilteredEquipmentList() {
             ? '<span style="color:#34d399; font-size:0.75rem; margin-right:4px;">●</span>'
             : '<span style="color:#9ca3af; font-size:0.75rem; margin-right:4px;">○</span>';
 
-        return `
-            <tr class="flow-row" style="cursor: default;">
-                <td style="padding: 12px 14px; vertical-align: top;">
-                    <div style="font-weight: 700; color: #a5b4fc; font-size: 0.92rem; margin-bottom: 3px;">${hostTitle}</div>
+        const ownerChipParts = [];
+        if (contact.owner_name) ownerChipParts.push(`👤 ${escapeHtml(contact.owner_name)}${contact.department ? ` (${escapeHtml(contact.department)})` : ''}`);
+        if (contact.vendor_name) ownerChipParts.push(`🏢 ${escapeHtml(contact.vendor_name)}`);
+        const ownerChipHtml = ownerChipParts.length > 0
+            ? `<div style="margin-top: 5px; font-size: 0.72rem; color: #fde68a; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 5px; padding: 2px 6px; display: inline-block; line-height: 1.4;">${ownerChipParts.join(' · ')}</div>`
+            : '';
+
+        const statusBadgeHtml = getIncidentStatusBadgeHtml(ev.incident_status || 'open');
+        const latestNoteHtml = ev.incident_latest_note
+            ? `<div style="margin-top: 5px; padding: 3px 6px; border-radius: 5px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.28); font-size: 0.71rem; color: #a7f3d0; line-height: 1.35; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;" title="${escapeHtml(ev.incident_latest_note)}">📝 ${escapeHtml(ev.incident_latest_note)}</div>`
+            : '';
+
+        const highRiskIntelCount = (ev.threat_intel || []).filter(ti =>
+            ['high', 'critical'].includes((ti.risk_level || '').toLowerCase()) || ti.vulns || ti.risky_ports
+        ).length;
+        const highRiskChipHtml = highRiskIntelCount > 0
+            ? `<div style="margin-top: 5px;"><span class="badge" style="background: rgba(239, 68, 68, 0.16); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.7rem; padding: 2px 6px; border-radius: 5px;">⚠️ 含高危情資 (${highRiskIntelCount})</span></div>`
+            : '';
+
+        const cellsMap = {
+            host: `
+                <td data-col-key="host" style="padding: 12px 12px; vertical-align: top;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary);">${escapeHtml(ev.host_ip)}</span>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${escapeHtml(ev.host_ip)}')" style="padding: 2px 5px; font-size: 0.7rem; border-radius: 4px;" title="複製 IP">
+                        <span style="font-family: var(--font-mono); font-size: 0.86rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(ev.host_ip)}</span>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyTextToClipboard('${escapeHtml(ev.host_ip)}')" style="padding: 2px 5px; font-size: 0.7rem; border-radius: 4px;" title="複製 IP">
                             <i data-lucide="copy" style="width: 11px; height: 11px;"></i>
                         </button>
                     </div>
-                </td>
-                <td style="padding: 12px 14px; vertical-align: top;">
-                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; margin-bottom: 2px;">${nacHostName}</div>
-                    <div style="font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 2px;">${nacMac}</div>
-                    <div style="font-size: 0.72rem; color: var(--text-muted);">${nacVendorOs}</div>
-                </td>
-                <td style="padding: 12px 14px; vertical-align: top;">
-                    <div style="font-size: 0.84rem; color: var(--text-primary); font-weight: 500; display: flex; align-items: center;">
-                        ${onlineDot} ${switchPort}
+                    ${ownerChipHtml}
+                </td>`,
+            athenac: `
+                <td data-col-key="athenac" style="padding: 12px 12px; vertical-align: top;">
+                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.84rem; margin-bottom: 2px; word-break: break-word;">${nacHostName}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 2px;">${nacMac}</div>
+                    <div style="font-size: 0.71rem; color: var(--text-muted); word-break: break-word;">${nacVendorOs}</div>
+                </td>`,
+            location: `
+                <td data-col-key="location" style="padding: 12px 12px; vertical-align: top;">
+                    <div style="font-size: 0.82rem; color: var(--text-primary); font-weight: 500; display: flex; align-items: flex-start; gap: 2px; word-break: break-word;">
+                        ${onlineDot}<span>${switchPort}</span>
                     </div>
-                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">
+                    <div style="font-size: 0.71rem; color: var(--text-muted); margin-top: 3px;">
                         ${nac.site_name ? escapeHtml(nac.site_name) + ' / ' : ''}${nac.network_name ? escapeHtml(nac.network_name) : ''}
                     </div>
-                </td>
-                <td style="padding: 12px 14px; vertical-align: top;">
-                    <div style="margin-bottom: 4px;">${getSeverityBadgeHtml(ev.severity)}</div>
-                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.86rem; line-height: 1.4;">${escapeHtml(ev.scenario_name)}</div>
-                    <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 3px;">${escapeHtml(ev.category)}・${escapeHtml(ev.time_window_label)}</div>
-                    ${(ev.threat_intel && ev.threat_intel.length > 0) ? ev.threat_intel.slice(0, 2).map(ti => `
-                        <div style="margin-top: 5px; padding: 3px 7px; border-radius: 5px; background: rgba(99, 102, 241, 0.14); border: 1px solid rgba(99, 102, 241, 0.32); font-size: 0.72rem; color: #c7d2fe; display: inline-block;">
-                            🛡️ <strong>${escapeHtml(ti.ip)}</strong>${ti.domain ? ` (${escapeHtml(ti.domain)})` : ''}｜風險值: <strong style="color:${(ti.risk_level === 'high' || ti.risk_level === 'critical') ? '#f87171' : '#fbbf24'};">${ti.risk_score}</strong>${ti.risky_ports ? `｜風險埠: <code>${escapeHtml(ti.risky_ports)}</code>` : ''} <span style="opacity:0.75;">[${escapeHtml(ti.provider)}]</span>
-                        </div>
-                    `).join('') : ''}
-                </td>
-                <td class="diag-col-nowrap" style="padding: 12px 14px; vertical-align: top; text-align: right; font-family: var(--font-mono);">
-                    <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">${formatBytes(ev.total_bytes)}</div>
-                    <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">${formatNumber(ev.flow_count)} 筆連線</div>
-                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(ev.last_ts)}</div>
-                </td>
-                <td style="padding: 12px 14px; vertical-align: top; text-align: center;">
+                </td>`,
+            severity: `
+                <td data-col-key="severity" style="padding: 12px 10px; vertical-align: top; text-align: center;">
+                    ${getSeverityBadgeHtml(ev.severity)}
+                </td>`,
+            status: `
+                <td data-col-key="status" style="padding: 12px 10px; vertical-align: top; text-align: center;">
+                    <div>${statusBadgeHtml}</div>
+                    ${latestNoteHtml}
+                </td>`,
+            scenario: `
+                <td data-col-key="scenario" style="padding: 12px 12px; vertical-align: top;">
+                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.85rem; line-height: 1.4; word-break: break-word;">${escapeHtml(ev.scenario_name)}</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">${escapeHtml(ev.category)}・${escapeHtml(ev.time_window_label)}</div>
+                    ${highRiskChipHtml}
+                </td>`,
+            scale: `
+                <td data-col-key="scale" class="diag-col-nowrap" style="padding: 12px 12px; vertical-align: top; text-align: right; font-family: var(--font-mono);">
+                    <div style="font-weight: 700; color: var(--text-primary); font-size: 0.88rem;">${formatBytes(ev.total_bytes)}</div>
+                    <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 2px;">${formatNumber(ev.flow_count)} 筆連線</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(ev.last_ts)}</div>
+                </td>`,
+            actions: `
+                <td data-col-key="actions" style="padding: 12px 10px; vertical-align: top; text-align: center;">
                     <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openPlaybookModal(${idx})" style="width: 135px; padding: 6px 10px; font-size: 0.8rem; border-radius: 6px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <i data-lucide="book-open" style="width: 14px; height: 14px;"></i>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openPlaybookModal(${idx})" style="width: 118px; padding: 6px 8px; font-size: 0.78rem; border-radius: 6px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <i data-lucide="book-open" style="width: 13px; height: 13px;"></i>
                             <span>詳細內容</span>
                         </button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="drillToLegacyAnomalies(${idx})" style="width: 135px; padding: 5px 10px; font-size: 0.76rem; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <i data-lucide="search" style="width: 13px; height: 13px;"></i>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="drillToLegacyAnomalies(${idx})" style="width: 118px; padding: 5px 8px; font-size: 0.74rem; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <i data-lucide="search" style="width: 12px; height: 12px;"></i>
                             <span>查看底層明細</span>
                         </button>
                     </div>
-                </td>
+                </td>`
+        };
+
+        return `
+            <tr class="flow-row" style="cursor: default;">
+                ${colOrder.map(k => cellsMap[k] || '').join('')}
             </tr>
         `;
     }).join('');
 
     if (window.lucide) window.lucide.createIcons();
 }
+
+function getIncidentStatusMeta(status) {
+    const st = (status || 'open').toLowerCase();
+    if (st === 'vendor_pending') {
+        return { label: '🟠 詢問廠商中', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.45)' };
+    }
+    if (st === 'resolved') {
+        return { label: '🟢 已解決', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.45)' };
+    }
+    if (st === 'ignored') {
+        return { label: '⚪ 忽略', bg: 'rgba(148, 163, 184, 0.16)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.38)' };
+    }
+    return { label: '🔴 待處理', bg: 'rgba(239, 68, 68, 0.16)', color: '#fca5a5', border: 'rgba(239, 68, 68, 0.4)' };
+}
+
+function getIncidentStatusBadgeHtml(status) {
+    const m = getIncidentStatusMeta(status);
+    return `<span class="badge" style="background:${m.bg}; color:${m.color}; border:1px solid ${m.border}; font-size:0.72rem; padding:2px 7px; border-radius:5px;">${m.label}</span>`;
+}
+
 let _currentPlaybookIdx = -1;
+
+function _renderPlaybookContactSummary(ev) {
+    const nac = ev.athenac || {};
+    const c = ev.asset_contact || {};
+    const hostDisplay = document.getElementById('playbook-host-display');
+    const locDisplay = document.getElementById('playbook-quick-location');
+    const ownerDisplay = document.getElementById('playbook-quick-owner');
+    const vendorDisplay = document.getElementById('playbook-quick-vendor');
+
+    const aliasText = c.name || ev.host_alias || nac.hostname || '';
+    if (hostDisplay) {
+        hostDisplay.innerHTML = `${escapeHtml(ev.host_ip)}${aliasText && aliasText !== ev.host_ip ? `<div style="font-size:0.76rem;color:#a5b4fc;font-family:var(--font-sans);font-weight:500;">${escapeHtml(aliasText)}${c.device_role ? ` · ${escapeHtml(c.device_role)}` : ''}</div>` : (c.device_role ? `<div style="font-size:0.76rem;color:#a5b4fc;font-family:var(--font-sans);font-weight:500;">${escapeHtml(c.device_role)}</div>` : '')}`;
+    }
+    if (locDisplay) {
+        const sw = [nac.switch_name, nac.port_name].filter(Boolean).join(' / ');
+        locDisplay.innerText = sw || '未納管 / 無交換機資料';
+    }
+    if (ownerDisplay) {
+        const oParts = [c.owner_name, c.department].filter(Boolean);
+        ownerDisplay.innerHTML = oParts.length > 0
+            ? escapeHtml(oParts.join(' · '))
+            : '<span style="color:var(--text-muted);font-weight:400;">尚未登記（點右上角編輯）</span>';
+    }
+    if (vendorDisplay) {
+        const vParts = [c.vendor_name, c.contact_info].filter(Boolean);
+        vendorDisplay.innerHTML = vParts.length > 0
+            ? escapeHtml(vParts.join(' · '))
+            : '<span style="color:var(--text-muted);font-weight:400;">尚未登記（點右上角編輯）</span>';
+    }
+
+    // Pre-fill edit form fields
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    setVal('playbook-edit-alias', c.name || ev.host_alias || nac.hostname || '');
+    setVal('playbook-edit-owner', c.owner_name || '');
+    setVal('playbook-edit-dept', c.department || '');
+    setVal('playbook-edit-vendor', c.vendor_name || '');
+    setVal('playbook-edit-contact', c.contact_info || '');
+    setVal('playbook-edit-role', c.device_role || '');
+}
+
+function _renderPlaybookStatusBadge(status) {
+    const badge = document.getElementById('playbook-incident-status-badge');
+    const sel = document.getElementById('playbook-incident-status-select');
+    const m = getIncidentStatusMeta(status);
+    if (badge) {
+        badge.innerText = m.label;
+        badge.style.background = m.bg;
+        badge.style.color = m.color;
+        badge.style.border = `1px solid ${m.border}`;
+    }
+    if (sel) sel.value = status || 'open';
+}
+
+function _renderPlaybookNotesTimeline(notes) {
+    const el = document.getElementById('playbook-notes-timeline');
+    if (!el) return;
+    if (!notes || notes.length === 0) {
+        el.innerHTML = `<div style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 8px 0;">尚無廠商回覆或處置備註紀錄</div>`;
+        return;
+    }
+    el.innerHTML = notes.map(n => `
+        <div style="background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255,255,255,0.08); border-radius: 7px; padding: 8px 11px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    ${getIncidentStatusBadgeHtml(n.status)}
+                    <span style="font-size: 0.74rem; color: #94a3b8;">${escapeHtml(n.author || 'admin')}</span>
+                </div>
+                <span style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-muted);">${escapeHtml(n.created_at || '')}</span>
+            </div>
+            <div style="font-size: 0.84rem; color: #f1f5f9; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(n.note || '')}</div>
+        </div>
+    `).join('');
+}
 
 function openPlaybookModal(idx) {
     const ev = _filteredEventsList[idx] || diagState.events[idx];
@@ -6387,18 +7211,82 @@ function openPlaybookModal(idx) {
     }
 
     const nac = ev.athenac || {};
-    document.getElementById('playbook-host-display').innerText = `${ev.host_ip}${ev.host_alias ? ' (' + ev.host_alias + ')' : ''}`;
-    const targetsStr = (ev.targets || []).map(t => t.alias ? `${t.alias} (${t.ip})` : t.ip).join(', ') || '外部網路';
-    const portsStr = (ev.ports || []).map(p => p.name ? `${p.port} (${p.name})` : p.port).join(', ') || '多種連接埠';
-    document.getElementById('playbook-target-display').innerText = `${targetsStr} [Port: ${portsStr}]`;
+    const swPort = [nac.switch_name, nac.port_name].filter(Boolean).join(' / ');
+    const targetsStr = (ev.targets || []).map(t => t.alias ? `${t.alias} (${t.ip})` : t.ip).join('、') || '外部網路';
+    const portsStr = (ev.ports || []).map(p => p.name ? `${p.port} (${p.name})` : p.port).join('、') || '多種連接埠';
+
+    // Build ultra-concise 1-line summary (no duplicate IP, no wall of target text)
+    const hostAliasOnly = (ev.host_alias && ev.host_alias !== ev.host_ip) ? ev.host_alias : (nac.hostname && nac.hostname !== ev.host_ip ? nac.hostname : '');
+    const hostDisplayInline = hostAliasOnly
+        ? `<strong>${escapeHtml(hostAliasOnly)}</strong> (<code style="font-family:var(--font-mono);">${escapeHtml(ev.host_ip)}</code>)`
+        : `<strong style="font-family:var(--font-mono);">${escapeHtml(ev.host_ip)}</strong>`;
+    const tiList = ev.threat_intel || [];
+    const highRiskTi = tiList.filter(t => ['high', 'critical'].includes((t.risk_level || '').toLowerCase()) || t.vulns || t.risky_ports);
+    const targetCount = (ev.targets || []).length;
+    const targetShort = targetCount === 1
+        ? escapeHtml(targetsStr)
+        : `${targetCount} 個目標`;
+
+    const onelineEl = document.getElementById('playbook-oneline-summary');
+    if (onelineEl) {
+        const locBadge = swPort ? `<span style="color:#38bdf8;font-family:var(--font-mono);">[${escapeHtml(swPort)}]</span> ` : '';
+        const riskTail = highRiskTi.length > 0
+            ? ` · <span style="color:#fca5a5;font-weight:700;">⚠️ 偵測到 ${highRiskTi.length} 筆高危情資 / CVE 弱點</span>`
+            : '';
+        onelineEl.innerHTML = `${locBadge}${hostDisplayInline} ➔ 存取 <strong>${targetShort}</strong>（Port ${escapeHtml(portsStr)}）· 累計 <strong>${formatBytes(ev.total_bytes)}</strong> / <strong>${formatNumber(ev.flow_count)} 筆連線</strong>${riskTail}`;
+    }
+
+    // Update collapsible badges
+    const targetsCountBadge = document.getElementById('playbook-targets-count-badge');
+    if (targetsCountBadge) {
+        targetsCountBadge.innerText = `${targetCount} 個目標${tiList.length > 0 ? ` · ${tiList.length} 筆情資` : ''}`;
+    }
+    const highRiskBadge = document.getElementById('playbook-highrisk-alert-badge');
+    if (highRiskBadge) {
+        if (highRiskTi.length > 0) {
+            highRiskBadge.style.display = 'inline-flex';
+            highRiskBadge.innerText = `⚠️ 含 ${highRiskTi.length} 筆高危 / CVE 弱點`;
+        } else {
+            highRiskBadge.style.display = 'none';
+        }
+    }
+
+    // Section 1: Contact summary & status
+    _renderPlaybookContactSummary(ev);
+    _renderPlaybookStatusBadge(ev.incident_status || 'open');
+    const editBox = document.getElementById('playbook-contact-edit-box');
+    if (editBox) editBox.style.display = 'none';
+
+    // Section 2: Behavior & Threat evidence
+    document.getElementById('playbook-target-display').innerText = `${targetsStr}\n[Port: ${portsStr}]`;
+    const scaleEl = document.getElementById('playbook-scale-display');
+    if (scaleEl) {
+        scaleEl.innerText = `累計流量：${formatBytes(ev.total_bytes)} · 共 ${formatNumber(ev.flow_count)} 筆連線\n最後活動時間：${ev.last_ts || '-'}`;
+    }
+
+    const threatBox = document.getElementById('playbook-threat-evidence-box');
+    if (threatBox) {
+        if (tiList.length > 0) {
+            threatBox.style.display = 'block';
+            threatBox.innerHTML = `<div style="font-weight:700;color:#fca5a5;margin-bottom:5px;">🛡️ 威脅情資與漏洞偵測證據：</div>` + tiList.map(ti => {
+                const vulnPart = ti.vulns ? ` ｜ <span style="color:#f87171;font-weight:700;">弱點/CVE：${escapeHtml(ti.vulns)}</span>` : '';
+                const portPart = ti.risky_ports ? ` ｜ 風險埠：<code>${escapeHtml(ti.risky_ports)}</code>` : '';
+                return `<div style="margin-bottom:3px;">• <strong style="font-family:var(--font-mono);">${escapeHtml(ti.ip)}</strong>${ti.domain ? ` (${escapeHtml(ti.domain)})` : ''} — 風險分數 <strong>${ti.risk_score}</strong> (${escapeHtml(ti.risk_level || '')})${portPart}${vulnPart} <span style="opacity:0.75;">[${escapeHtml(ti.provider || 'DB')}]</span></div>`;
+            }).join('');
+        } else {
+            threatBox.style.display = 'none';
+            threatBox.innerHTML = '';
+        }
+    }
 
     document.getElementById('playbook-reason-text').innerText = ev.reason_text;
     document.getElementById('playbook-anomaly-point').innerText = ev.anomaly_point;
 
+    // Section 4: Collapsible AtheNAC & SOP (collapsed by default)
     document.getElementById('playbook-athenac-mode').innerText = nac.is_simulated ? '模擬設備資訊' : 'PIXIS 即時同步';
     document.getElementById('playbook-nac-hostname').innerText = nac.hostname || '無資料';
     document.getElementById('playbook-nac-mac').innerText = nac.mac || '無資料';
-    document.getElementById('playbook-nac-location').innerText = (nac.switch_name || nac.port_name) ? `${nac.switch_name || ''} / ${nac.port_name || ''}` : '無資料';
+    document.getElementById('playbook-nac-location').innerText = swPort || '無資料';
     document.getElementById('playbook-nac-vendor-os').innerText = [nac.vendor, nac.os_detail].filter(Boolean).join(' / ') || '無資料';
     document.getElementById('playbook-nac-network').innerText = [nac.site_name, nac.network_name].filter(Boolean).join(' / ') || '無資料';
     document.getElementById('playbook-nac-online').innerHTML = nac.is_online
@@ -6407,6 +7295,67 @@ function openPlaybookModal(idx) {
 
     const stepsList = document.getElementById('playbook-steps-list');
     stepsList.innerHTML = (ev.remediation_steps || []).map(s => `<li>${escapeHtml(s.replace(/^\d+\.\s*/, ''))}</li>`).join('');
+
+    // Reset all 3 collapsible sections to collapsed by default
+    const targetsBody = document.getElementById('playbook-targets-body');
+    const evidenceBody = document.getElementById('playbook-evidence-body');
+    const techBody = document.getElementById('playbook-tech-details-body');
+    [
+        [targetsBody, 'icon-playbook-targets-chevron-wrap'],
+        [evidenceBody, 'icon-playbook-evidence-chevron-wrap'],
+        [techBody, 'icon-playbook-tech-chevron-wrap']
+    ].forEach(([bodyEl, wrapId]) => {
+        if (bodyEl) bodyEl.style.display = 'none';
+        const wrap = document.getElementById(wrapId);
+        if (wrap) wrap.innerHTML = '<i data-lucide="chevron-down" style="width: 15px; height: 15px; color: var(--text-muted);"></i>';
+    });
+
+    // Reset note input and fetch incident notes timeline
+    const noteInput = document.getElementById('playbook-note-input');
+    if (noteInput) noteInput.value = '';
+    const timelineEl = document.getElementById('playbook-notes-timeline');
+    if (timelineEl) timelineEl.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);text-align:center;padding:4px 0;">正在載入備註紀錄...</div>`;
+    fetchIncidentNotesForModal(ev);
+
+    // Wire buttons
+    const btnToggleEdit = document.getElementById('btn-toggle-edit-contact');
+    if (btnToggleEdit) {
+        btnToggleEdit.onclick = () => {
+            if (!editBox) return;
+            editBox.style.display = (editBox.style.display === 'none') ? 'block' : 'none';
+        };
+    }
+    const btnCancelEdit = document.getElementById('btn-cancel-edit-contact');
+    if (btnCancelEdit) {
+        btnCancelEdit.onclick = () => { if (editBox) editBox.style.display = 'none'; };
+    }
+    const btnSaveEdit = document.getElementById('btn-save-edit-contact');
+    if (btnSaveEdit) {
+        btnSaveEdit.onclick = () => savePlaybookAssetContact(ev);
+    }
+    const btnCopyVendor = document.getElementById('btn-playbook-copy-vendor');
+    if (btnCopyVendor) {
+        btnCopyVendor.onclick = () => copyVendorInquiryMessage(ev);
+    }
+    const btnSaveNote = document.getElementById('btn-save-incident-note');
+    if (btnSaveNote) {
+        btnSaveNote.onclick = () => saveIncidentNoteFromModal(ev);
+    }
+
+    const bindAccordion = (btnId, bodyEl, wrapId) => {
+        const btn = document.getElementById(btnId);
+        if (!btn || !bodyEl) return;
+        btn.onclick = () => {
+            const isHidden = window.getComputedStyle(bodyEl).display === 'none';
+            bodyEl.style.display = isHidden ? 'block' : 'none';
+            const wrap = document.getElementById(wrapId);
+            if (wrap) wrap.innerHTML = `<i data-lucide="${isHidden ? 'chevron-up' : 'chevron-down'}" style="width: 15px; height: 15px;"></i>`;
+            if (window.lucide) window.lucide.createIcons();
+        };
+    };
+    bindAccordion('btn-toggle-playbook-targets', targetsBody, 'icon-playbook-targets-chevron-wrap');
+    bindAccordion('btn-toggle-playbook-evidence', evidenceBody, 'icon-playbook-evidence-chevron-wrap');
+    bindAccordion('btn-toggle-playbook-tech-details', techBody, 'icon-playbook-tech-chevron-wrap');
 
     const btnDrill = document.getElementById('btn-playbook-drill-legacy');
     if (btnDrill) {
@@ -6418,6 +7367,171 @@ function openPlaybookModal(idx) {
 
     if (modal) modal.classList.add('active');
     if (window.lucide) window.lucide.createIcons();
+}
+
+async function fetchIncidentNotesForModal(ev) {
+    try {
+        const params = new URLSearchParams({
+            host_ip: ev.host_ip,
+            scenario_key: ev.scenario_name || ''
+        });
+        const res = await fetch(`/api/incidents/notes?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load notes');
+        const data = await res.json();
+        ev.incident_status = data.status || 'open';
+        ev.incident_latest_note = data.latest_note || '';
+        ev.incident_note_count = data.note_count || 0;
+        if (data.asset_contact) {
+            ev.asset_contact = data.asset_contact;
+            _renderPlaybookContactSummary(ev);
+        }
+        _renderPlaybookStatusBadge(ev.incident_status);
+        _renderPlaybookNotesTimeline(data.notes || []);
+    } catch (err) {
+        const el = document.getElementById('playbook-notes-timeline');
+        if (el) el.innerHTML = `<div style="font-size:0.8rem;color:#f87171;text-align:center;padding:8px 0;">載入備註紀錄失敗：${escapeHtml(err.message)}</div>`;
+    }
+}
+
+async function savePlaybookAssetContact(ev) {
+    const payload = {
+        ip: ev.host_ip,
+        alias_name: (document.getElementById('playbook-edit-alias')?.value || '').trim(),
+        owner_name: (document.getElementById('playbook-edit-owner')?.value || '').trim(),
+        department: (document.getElementById('playbook-edit-dept')?.value || '').trim(),
+        vendor_name: (document.getElementById('playbook-edit-vendor')?.value || '').trim(),
+        contact_info: (document.getElementById('playbook-edit-contact')?.value || '').trim(),
+        device_role: (document.getElementById('playbook-edit-role')?.value || '').trim()
+    };
+    try {
+        const res = await fetch('/api/asset-contacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '儲存失敗');
+        const updated = data.contact || payload;
+        // Sync across all events sharing this host_ip
+        (diagState.events || []).forEach(item => {
+            if (item.host_ip === ev.host_ip) {
+                item.asset_contact = updated;
+                if (updated.name) item.host_alias = updated.name;
+            }
+        });
+        ev.asset_contact = updated;
+        if (updated.name) ev.host_alias = updated.name;
+        _renderPlaybookContactSummary(ev);
+        const editBox = document.getElementById('playbook-contact-edit-box');
+        if (editBox) editBox.style.display = 'none';
+        renderFilteredEquipmentList();
+        fetchIpAliases();
+        showToast(data.message || '已儲存負責人與維護廠商資訊', 'success', '聯絡資訊已同步');
+    } catch (err) {
+        showToast(err.message, 'error', '儲存失敗');
+    }
+}
+
+async function saveIncidentNoteFromModal(ev) {
+    const statusVal = document.getElementById('playbook-incident-status-select')?.value || 'open';
+    const noteInput = document.getElementById('playbook-note-input');
+    const noteText = (noteInput?.value || '').trim();
+    const btn = document.getElementById('btn-save-incident-note');
+    if (btn) btn.disabled = true;
+    try {
+        const res = await fetch('/api/incidents/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host_ip: ev.host_ip,
+                scenario_key: ev.scenario_name || '',
+                status: statusVal,
+                note: noteText
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '儲存失敗');
+        ev.incident_status = data.incident_status || statusVal;
+        ev.incident_latest_note = data.latest_note || '';
+        ev.incident_note_count = data.note_count || 0;
+        if (noteInput) noteInput.value = '';
+        _renderPlaybookStatusBadge(ev.incident_status);
+        _renderPlaybookNotesTimeline(data.notes || []);
+        renderFilteredEquipmentList();
+        showToast('已儲存廠商回覆與處理狀態（同步更新至異常設備清單）', 'success', '備註已儲存');
+    } catch (err) {
+        showToast(err.message, 'error', '儲存備註失敗');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function copyVendorInquiryMessage(ev) {
+    const nac = ev.athenac || {};
+    const c = ev.asset_contact || {};
+    const swPort = [nac.switch_name, nac.port_name].filter(Boolean).join(' / ') || '未納管';
+    const targetsStr = (ev.targets || []).map(t => t.alias ? `${t.alias} (${t.ip})` : t.ip).join('、') || '外部網路';
+    const portsStr = (ev.ports || []).map(p => p.name ? `${p.port} (${p.name})` : p.port).join('、') || '多種連接埠';
+    const tiLines = (ev.threat_intel || []).map(ti =>
+        `  - 外部 IP ${ti.ip}${ti.domain ? ` (${ti.domain})` : ''}：風險值 ${ti.risk_score} (${ti.risk_level || ''})${ti.risky_ports ? `、風險埠 [${ti.risky_ports}]` : ''}${ti.vulns ? `、弱點 ${ti.vulns}` : ''}`
+    );
+
+    const msg = [
+        `您好，網路流量監控系統偵測到以下主機出現異常連線／風險事件，請協助確認原因與提供處置建議：`,
+        ``,
+        `【異常主機資訊】`,
+        `• 主機名稱 / IP：${c.name || ev.host_alias || nac.hostname || ev.host_ip} (${ev.host_ip})`,
+        `• 實體位置 (Switch/Port)：${swPort}`,
+        c.owner_name || c.department ? `• 主機負責人 / 部門：${[c.owner_name, c.department].filter(Boolean).join(' / ')}` : null,
+        c.vendor_name ? `• 維護廠商：${c.vendor_name}${c.contact_info ? ` (${c.contact_info})` : ''}` : null,
+        ``,
+        `【異常現象與時間】`,
+        `• 風險情境：${ev.scenario_name} (${ev.category})`,
+        `• 發生時段：${ev.time_window_label}（最後活動時間：${ev.last_ts}）`,
+        `• 存取對象與服務：${targetsStr} [Port: ${portsStr}]`,
+        `• 流量與連線規模：${formatBytes(ev.total_bytes)} / 共 ${formatNumber(ev.flow_count)} 筆連線`,
+        `• 系統判定說明：${ev.reason_text}`,
+        tiLines.length > 0 ? `• 外部情資與漏洞比對：\n${tiLines.join('\n')}` : null,
+        ``,
+        `再麻煩協助確認此主機當時執行的作業內容，或提供相關修補／處置解法，謝謝！`
+    ].filter(x => x !== null).join('\n');
+
+    copyTextToClipboard(msg).then(() => {
+        const textSpan = document.getElementById('btn-playbook-copy-vendor-text');
+        if (textSpan) {
+            const orig = textSpan.innerText;
+            textSpan.innerText = '已複製詢問廠商訊息！';
+            setTimeout(() => { textSpan.innerText = orig; }, 2200);
+        }
+        showToast('已複製「詢問廠商訊息」至剪貼簿，可直接貼上至 LINE / Teams / Email', 'success', '複製成功');
+    }).catch(err => {
+        console.error('Copy vendor message failed:', err);
+        showToast('複製失敗，請手動選取文字複製', 'error', '複製失敗');
+    });
+}
+
+function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) resolve();
+            else reject(new Error('execCommand copy returned false'));
+        } catch (e) {
+            reject(e);
+        }
+    });
 }
 
 function copyPlaybookReport() {
@@ -6459,7 +7573,7 @@ function drillToLegacyAnomalies(idx) {
     const ev = _filteredEventsList[idx] || diagState.events[idx];
     if (!ev) return;
 
-    // Reset and populate legacy anomalies filters with host IP (+ port if single)
+    // Reset and populate drill-down anomalies filters with host IP (+ port if single)
     state.anomaliesFilters.conditions = [{ id: genConditionId(), field: 'any_ip', ipType: 'custom', val: ev.host_ip }];
     if (ev.drill_filters && ev.drill_filters.port) {
         state.anomaliesFilters.conditions.push({ id: genConditionId(), field: 'any_port', ipType: 'custom', val: ev.drill_filters.port });
@@ -6471,14 +7585,36 @@ function drillToLegacyAnomalies(idx) {
 
     renderConditions('anomalies');
 
-    const drillBanner = document.getElementById('anomalies-drill-banner');
-    const drillText = document.getElementById('anomalies-drill-text');
-    if (drillBanner && drillText) {
-        drillBanner.style.display = 'flex';
-        drillText.innerText = `已帶入情境「${ev.scenario_name}」異常主機 ${ev.host_ip} 的底層 IP/Port 明細條件`;
+    const titleEl = document.getElementById('drill-modal-title');
+    const subEl = document.getElementById('drill-modal-subtitle');
+    if (titleEl) titleEl.innerText = `底層流量明細與流向分析 — ${ev.host_ip}`;
+    if (subEl) {
+        const portText = (ev.drill_filters && ev.drill_filters.port) ? ` ｜ Port: ${ev.drill_filters.port}` : '';
+        subEl.innerText = `情境：${ev.scenario_name || '異常情境'} ｜ 異常主機：${ev.host_ip}${portText}`;
     }
 
-    switchAnomaliesMode('legacy');
+    const sankeyContainer = document.getElementById('drill-sankey-container');
+    if (sankeyContainer) {
+        sankeyContainer.innerHTML = `<div class="text-center text-muted py-5" style="padding: 80px 0;">正在繪製視覺化圖表...</div>`;
+    }
+    const drillChartSelect = document.getElementById('drill-chart-mode-select');
+    if (drillChartSelect) drillChartSelect.value = 'sankey';
+    const drillChartHint = document.getElementById('drill-chart-hint');
+    if (drillChartHint) drillChartHint.innerText = '線寬代表傳輸量 (Bytes)，點擊節點可加入篩選';
+    const sankeySummary = document.getElementById('drill-sankey-summary');
+    if (sankeySummary) sankeySummary.innerText = '載入中...';
+    const sankeyBody = document.getElementById('drill-sankey-body');
+    if (sankeyBody) sankeyBody.style.display = 'block';
+    const btnToggleSankey = document.getElementById('btn-toggle-drill-sankey');
+    if (btnToggleSankey) {
+        btnToggleSankey.innerHTML = '<i data-lucide="chevron-up" style="width: 13px; height: 13px;"></i><span>收合圖表</span>';
+    }
+
+    const modal = document.getElementById('modal-drill-details');
+    if (modal) modal.classList.add('active');
+    if (window.lucide) window.lucide.createIcons();
+
+    fetchAnomalousReport();
 }
 
 // Scenario Rules Manager - Now Integrated into Traffic Audit (系統設定 -> 流量盤查)
@@ -6787,7 +7923,7 @@ async function saveAthenacSettings() {
 
 async function testAthenacConnection() {
     try {
-        const res = await fetch('/api/settings/athenac/test?test_ip=192.168.30.101', { method: 'POST' });
+        const res = await fetch('/api/settings/athenac/test', { method: 'POST' });
         const data = await res.json();
         const sample = data.sample || {};
         showAthenacStatus(`${data.message} (範例回傳: HostName=${sample.hostname || 'N/A'}, MAC=${sample.mac || 'N/A'}, Switch=${sample.switch_name || 'N/A'} ${sample.port_name || ''})`, data.status === 'connected' ? 'success' : 'info');
