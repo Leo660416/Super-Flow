@@ -1748,5 +1748,80 @@ th.sort-active .sort-icon {
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Tier 3 Draggable & Resizable Table Columns */
+.tier3-th {
+    position: relative;
+    user-select: none;
+    cursor: grab;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tier3-th:hover {
+    background-color: #273449 !important;
+}
+
+.tier3-th.dragging {
+    opacity: 0.45;
+    cursor: grabbing;
+}
+
+.tier3-th.drag-over {
+    background-color: rgba(99, 102, 241, 0.25) !important;
+    box-shadow: inset 3px 0 0 #818cf8;
+}
+
+.tier3-th-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: calc(100% - 10px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tier3-grip {
+    opacity: 0.38;
+    font-size: 0.78rem;
+    letter-spacing: -1px;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+}
+
+.tier3-th:hover .tier3-grip {
+    opacity: 0.85;
+    color: #a5b4fc;
+}
+
+.tier3-col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tier3-col-resizer::after {
+    content: '';
+    width: 2px;
+    height: 60%;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+    transition: background-color 0.15s ease, height 0.15s ease;
+}
+
+.tier3-col-resizer:hover::after,
+.tier3-col-resizer.resizing::after {
+    background: #818cf8;
+    height: 85%;
+    width: 3px;
+}
+
+
 
 

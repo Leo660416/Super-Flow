@@ -53,7 +53,7 @@ def parse_tw_datetime(dt_str: str) -> datetime:
     except Exception:
         return now_tw()
 
-app = FastAPI(title="Netflow Collector Web UI")
+app = FastAPI(title="Super Flow Web UI")
 
 DB_PATH = os.getenv("SQLITE_DB_PATH", "flows.db")
 
@@ -1078,10 +1078,51 @@ def init_db():
             name TEXT NOT NULL,
             start_ip TEXT,
             end_ip TEXT,
-            prefix_len INTEGER
+            prefix_len INTEGER,
+            owner_name TEXT DEFAULT '',
+            department TEXT DEFAULT '',
+            vendor_name TEXT DEFAULT '',
+            contact_info TEXT DEFAULT '',
+            device_role TEXT DEFAULT ''
         )""")
+        # Safe column migration for existing databases
+        cur.execute("PRAGMA table_info(ip_aliases)")
+        existing_alias_cols = {row[1] for row in cur.fetchall()}
+        for col_name, col_def in [
+            ("owner_name", "TEXT DEFAULT ''"),
+            ("department", "TEXT DEFAULT ''"),
+            ("vendor_name", "TEXT DEFAULT ''"),
+            ("contact_info", "TEXT DEFAULT ''"),
+            ("device_role", "TEXT DEFAULT ''"),
+        ]:
+            if col_name not in existing_alias_cols:
+                try:
+                    cur.execute(f"ALTER TABLE ip_aliases ADD COLUMN {col_name} {col_def}")
+                except Exception:
+                    pass
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ip_aliases_range ON ip_aliases (start_ip, end_ip, prefix_len)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ip_aliases_name ON ip_aliases (name)")
+
+        # Incident status & vendor reply notes tables
+        cur.execute("""CREATE TABLE IF NOT EXISTS incident_status (
+            host_ip TEXT NOT NULL,
+            scenario_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            latest_note TEXT DEFAULT '',
+            note_count INTEGER DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (host_ip, scenario_key)
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS incident_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            host_ip TEXT NOT NULL,
+            scenario_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            note TEXT DEFAULT '',
+            author TEXT DEFAULT 'admin',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incident_notes_lookup ON incident_notes (host_ip, scenario_key, created_at DESC)")
         
         # Initialize audit rules table
         cur.execute("""CREATE TABLE IF NOT EXISTS audit_rules (
@@ -3280,8 +3321,8 @@ def get_ip_aliases(
         params = []
         if q and q.strip():
             q_clean = f"%{q.strip()}%"
-            where_clause = "WHERE ip LIKE ? OR name LIKE ?"
-            params = [q_clean, q_clean]
+            where_clause = "WHERE ip LIKE ? OR name LIKE ? OR owner_name LIKE ? OR department LIKE ? OR vendor_name LIKE ? OR contact_info LIKE ? OR device_role LIKE ?"
+            params = [q_clean] * 7
             cur.execute(f"SELECT COUNT(*) FROM ip_aliases {where_clause}", params)
             total_count = cur.fetchone()[0]
         else:
@@ -3293,7 +3334,16 @@ def get_ip_aliases(
                 ip_aliases_total_count_cache = total_count
         
         params.extend([limit, offset])
-        cur.execute(f"SELECT ip, name FROM ip_aliases {where_clause} ORDER BY ip ASC LIMIT ? OFFSET ?", params)
+        cur.execute(f"""
+            SELECT ip, name,
+                   COALESCE(owner_name, '') as owner_name,
+                   COALESCE(department, '') as department,
+                   COALESCE(vendor_name, '') as vendor_name,
+                   COALESCE(contact_info, '') as contact_info,
+                   COALESCE(device_role, '') as device_role
+            FROM ip_aliases {where_clause}
+            ORDER BY ip ASC LIMIT ? OFFSET ?
+        """, params)
         rows = cur.fetchall()
         conn.close()
         
@@ -3301,20 +3351,45 @@ def get_ip_aliases(
             "total": total_count,
             "limit": limit,
             "offset": offset,
-            "records": [{"ip": r["ip"], "name": r["name"]} for r in rows]
+            "records": [{
+                "ip": r["ip"],
+                "name": r["name"],
+                "owner_name": r["owner_name"],
+                "department": r["department"],
+                "vendor_name": r["vendor_name"],
+                "contact_info": r["contact_info"],
+                "device_role": r["device_role"],
+            } for r in rows]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ips/aliases")
-def set_ip_alias(ip: str, name: str):
+def set_ip_alias(
+    ip: str,
+    name: str,
+    owner_name: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
+    vendor_name: Optional[str] = Query(None),
+    contact_info: Optional[str] = Query(None),
+    device_role: Optional[str] = Query(None),
+):
     ip = ip.strip()
     name = name.strip()
     if not ip or not name:
         raise HTTPException(status_code=400, detail="IP and Name cannot be empty")
     try:
         conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
         cur = conn.cursor()
+        cur.execute("SELECT owner_name, department, vendor_name, contact_info, device_role FROM ip_aliases WHERE ip = ?", (ip,))
+        existing = cur.fetchone()
+        final_owner = (owner_name.strip() if owner_name is not None else (existing["owner_name"] if existing else "")) or ""
+        final_dept = (department.strip() if department is not None else (existing["department"] if existing else "")) or ""
+        final_vendor = (vendor_name.strip() if vendor_name is not None else (existing["vendor_name"] if existing else "")) or ""
+        final_contact = (contact_info.strip() if contact_info is not None else (existing["contact_info"] if existing else "")) or ""
+        final_role = (device_role.strip() if device_role is not None else (existing["device_role"] if existing else "")) or ""
+
         start_ip, end_ip, prefix_len = None, None, None
         try:
             if "/" in ip:
@@ -3330,12 +3405,211 @@ def set_ip_alias(ip: str, name: str):
         except Exception:
             pass
             
-        cur.execute("INSERT OR REPLACE INTO ip_aliases (ip, name, start_ip, end_ip, prefix_len) VALUES (?, ?, ?, ?, ?)",
-                    (ip, name, start_ip, end_ip, prefix_len))
+        cur.execute("""
+            INSERT OR REPLACE INTO ip_aliases
+            (ip, name, start_ip, end_ip, prefix_len, owner_name, department, vendor_name, contact_info, device_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (ip, name, start_ip, end_ip, prefix_len, final_owner, final_dept, final_vendor, final_contact, final_role))
         conn.commit()
         conn.close()
         load_ip_aliases() # Refresh cache
         return {"status": "success", "message": f"IP {ip} named as {name}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AssetContactUpsertRequest(BaseModel):
+    ip: str
+    alias_name: Optional[str] = ""
+    owner_name: Optional[str] = ""
+    department: Optional[str] = ""
+    vendor_name: Optional[str] = ""
+    contact_info: Optional[str] = ""
+    device_role: Optional[str] = ""
+
+@app.post("/api/asset-contacts")
+def upsert_asset_contact(payload: AssetContactUpsertRequest):
+    ip = (payload.ip or "").strip()
+    if not ip:
+        raise HTTPException(status_code=400, detail="IP cannot be empty")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM ip_aliases WHERE ip = ?", (ip,))
+        existing = cur.fetchone()
+        alias_name = (payload.alias_name or "").strip() or (existing["name"] if existing else ip)
+
+        start_ip, end_ip, prefix_len = None, None, None
+        try:
+            if "/" in ip:
+                net = ipaddress.ip_network(ip, strict=False)
+                start_ip = ip_to_hex(net.network_address)
+                end_ip = ip_to_hex(net.broadcast_address)
+                prefix_len = net.prefixlen
+            else:
+                ip_obj = ipaddress.ip_address(ip)
+                start_ip = ip_to_hex(ip_obj)
+                end_ip = start_ip
+                prefix_len = 32 if ip_obj.version == 4 else 128
+        except Exception:
+            pass
+
+        cur.execute("""
+            INSERT OR REPLACE INTO ip_aliases
+            (ip, name, start_ip, end_ip, prefix_len, owner_name, department, vendor_name, contact_info, device_role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            ip,
+            alias_name,
+            start_ip,
+            end_ip,
+            prefix_len,
+            (payload.owner_name or "").strip(),
+            (payload.department or "").strip(),
+            (payload.vendor_name or "").strip(),
+            (payload.contact_info or "").strip(),
+            (payload.device_role or "").strip(),
+        ))
+        conn.commit()
+        conn.close()
+        load_ip_aliases()
+        return {
+            "status": "success",
+            "message": f"已儲存 {ip} 的負責人與維護廠商資訊（同步至別名管理）",
+            "contact": {
+                "ip": ip,
+                "name": alias_name,
+                "owner_name": (payload.owner_name or "").strip(),
+                "department": (payload.department or "").strip(),
+                "vendor_name": (payload.vendor_name or "").strip(),
+                "contact_info": (payload.contact_info or "").strip(),
+                "device_role": (payload.device_role or "").strip(),
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+VALID_INCIDENT_STATUSES = {"open", "vendor_pending", "resolved", "ignored"}
+
+class IncidentNoteCreateRequest(BaseModel):
+    host_ip: str
+    scenario_key: str
+    status: str = "open"
+    note: Optional[str] = ""
+
+@app.get("/api/incidents/notes")
+def get_incident_notes(host_ip: str = Query(...), scenario_key: str = Query(...)):
+    hip = host_ip.strip()
+    skey = scenario_key.strip()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT status, latest_note, note_count, updated_at
+            FROM incident_status
+            WHERE host_ip = ? AND scenario_key = ?
+        """, (hip, skey))
+        st_row = cur.fetchone()
+        cur.execute("""
+            SELECT id, status, note, author, created_at
+            FROM incident_notes
+            WHERE host_ip = ? AND scenario_key = ?
+            ORDER BY id DESC
+            LIMIT 50
+        """, (hip, skey))
+        notes = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT ip, name,
+                   COALESCE(owner_name, '') as owner_name,
+                   COALESCE(department, '') as department,
+                   COALESCE(vendor_name, '') as vendor_name,
+                   COALESCE(contact_info, '') as contact_info,
+                   COALESCE(device_role, '') as device_role
+            FROM ip_aliases WHERE ip = ?
+        """, (hip,))
+        c_row = cur.fetchone()
+        conn.close()
+        return {
+            "host_ip": hip,
+            "scenario_key": skey,
+            "status": st_row["status"] if st_row else "open",
+            "latest_note": st_row["latest_note"] if st_row else "",
+            "note_count": st_row["note_count"] if st_row else 0,
+            "updated_at": st_row["updated_at"] if st_row else "",
+            "notes": notes,
+            "asset_contact": dict(c_row) if c_row else {
+                "ip": hip, "name": "", "owner_name": "", "department": "",
+                "vendor_name": "", "contact_info": "", "device_role": ""
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/incidents/notes")
+def add_incident_note(payload: IncidentNoteCreateRequest, request: Request):
+    hip = (payload.host_ip or "").strip()
+    skey = (payload.scenario_key or "").strip()
+    st = (payload.status or "open").strip().lower()
+    note_text = (payload.note or "").strip()
+    if not hip or not skey:
+        raise HTTPException(status_code=400, detail="host_ip and scenario_key are required")
+    if st not in VALID_INCIDENT_STATUSES:
+        st = "open"
+    author = "admin"
+    try:
+        user_info = getattr(request.state, "user", None)
+        if isinstance(user_info, dict) and user_info.get("username"):
+            author = user_info["username"]
+    except Exception:
+        pass
+    now_str = now_tw().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        status_label_map = {
+            "open": "待處理",
+            "vendor_pending": "詢問廠商中",
+            "resolved": "已解決",
+            "ignored": "忽略",
+        }
+        entry_note = note_text if note_text else f"更新處理狀態為「{status_label_map.get(st, st)}」"
+        cur.execute("""
+            INSERT INTO incident_notes (host_ip, scenario_key, status, note, author, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (hip, skey, st, entry_note, author, now_str))
+
+        cur.execute("SELECT COUNT(*) FROM incident_notes WHERE host_ip = ? AND scenario_key = ?", (hip, skey))
+        n_cnt = cur.fetchone()[0]
+        cur.execute("SELECT latest_note FROM incident_status WHERE host_ip = ? AND scenario_key = ?", (hip, skey))
+        prev = cur.fetchone()
+        final_latest_note = note_text if note_text else (prev["latest_note"] if prev else entry_note)
+
+        cur.execute("""
+            INSERT OR REPLACE INTO incident_status (host_ip, scenario_key, status, latest_note, note_count, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (hip, skey, st, final_latest_note, n_cnt, now_str))
+
+        cur.execute("""
+            SELECT id, status, note, author, created_at
+            FROM incident_notes
+            WHERE host_ip = ? AND scenario_key = ?
+            ORDER BY id DESC
+            LIMIT 50
+        """, (hip, skey))
+        notes = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+        conn.close()
+        return {
+            "status": "success",
+            "incident_status": st,
+            "latest_note": final_latest_note,
+            "note_count": n_cnt,
+            "updated_at": now_str,
+            "notes": notes
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -4539,6 +4813,18 @@ def get_audit_matches_stats(
             """,
             params
         )
+        f_sankey = ch_query_executor.submit(
+            _run_ch_query,
+            f"""
+            SELECT src, dport, dst, SUM(octets) as bytes, COUNT() as flows
+            FROM {target_table}
+            {where_sql}
+            GROUP BY src, dport, dst
+            ORDER BY bytes DESC
+            LIMIT 25
+            """,
+            params
+        )
         f_range = ch_query_executor.submit(
             _run_ch_query,
             f"SELECT min(ts), max(ts) FROM {target_table} {where_sql}",
@@ -4618,12 +4904,21 @@ def get_audit_matches_stats(
                 r["time_bin"] = tb.strftime(time_format)
             traffic_over_time.append(r)
 
+        # Collect Sankey 3-tier flows (src -> dport -> dst)
+        res_sankey = f_sankey.result()
+        sankey_raw = [dict(zip(res_sankey.column_names, r)) for r in res_sankey.result_rows]
+
         # Resolve IPs
         stats_ips = set()
         for item in top_sources:
             if item.get("src"):
                 stats_ips.add(item["src"])
         for item in top_destinations:
+            if item.get("dst"):
+                stats_ips.add(item["dst"])
+        for item in sankey_raw:
+            if item.get("src"):
+                stats_ips.add(item["src"])
             if item.get("dst"):
                 stats_ips.add(item["dst"])
         # Get DNS and IP Aliases mappings in batch
@@ -4635,6 +4930,23 @@ def get_audit_matches_stats(
         for item in top_destinations:
             ip = item.get("dst")
             item["domain"] = alias_map.get(ip) or stats_dns_map.get(ip, "")
+
+        sankey_flows = []
+        for item in sankey_raw:
+            s_ip = item.get("src") or ""
+            d_ip = item.get("dst") or ""
+            dp = item.get("dport")
+            dp_name = port_aliases_cache.get(dp, "") if dp is not None else ""
+            sankey_flows.append({
+                "src": s_ip,
+                "src_label": alias_map.get(s_ip) or stats_dns_map.get(s_ip, ""),
+                "dport": dp if dp is not None else 0,
+                "dport_name": dp_name,
+                "dst": d_ip,
+                "dst_label": alias_map.get(d_ip) or stats_dns_map.get(d_ip, ""),
+                "bytes": int(item.get("bytes") or 0),
+                "flows": int(item.get("flows") or 0)
+            })
 
         # Resolve Ports
         for item in top_source_ports:
@@ -4685,6 +4997,7 @@ def get_audit_matches_stats(
             "protocols": protocols,
             "ip_protocols": ip_protocols,
             "top_aliases": top_aliases,
+            "sankey_flows": sankey_flows,
             "flags": flags,
             "traffic_over_time": traffic_over_time
         }
@@ -5100,7 +5413,24 @@ SIMULATED_ATHENAC_HOSTS = {
     "10.0.5.25": {"hostname": "RD-TEST-25", "mac": "52-54-00-05-00-25", "vendor": "QEMU Virtual NIC", "os_detail": "CentOS Stream 9", "switch_name": "3F-Lab-SW01", "port_name": "Gi0/25", "site_name": "研發實驗室", "network_name": "Lab-VLAN5", "is_online": True},
 }
 
+def _normalize_athenac_base_url(raw_url: str) -> str:
+    u = (raw_url or "").strip()
+    if u and not u.lower().startswith(("http://", "https://")):
+        u = ("http://" if (":8000" in u or u.endswith(":80")) else "https://") + u
+    for cut in ("/swagger", "/apiv3", "/api/Connect"):
+        idx = u.lower().find(cut.lower())
+        if idx != -1:
+            u = u[:idx]
+    return u.rstrip("/")
+
+def _format_mac_readable(mac_str: str) -> str:
+    m = (mac_str or "").strip().upper()
+    if len(m) == 12 and all(c in "0123456789ABCDEF" for c in m):
+        return "-".join(m[i:i+2] for i in range(0, 12, 2))
+    return m
+
 def _get_athenac_oauth_token(base_url: str, username: str, password: str) -> str:
+    base_url = _normalize_athenac_base_url(base_url)
     now_ts = time.monotonic()
     with _athenac_token_lock:
         if _athenac_token_cache["token"] and now_ts < _athenac_token_cache["expires_at"] - 30:
@@ -5116,12 +5446,12 @@ def _get_athenac_oauth_token(base_url: str, username: str, password: str) -> str
             "password": password,
         }).encode("utf-8")
         req = urllib.request.Request(
-            f"{base_url.rstrip('/')}/api/Connect/Token",
+            f"{base_url}/api/Connect/Token",
             data=form_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, context=ctx, timeout=4) as resp:
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
             tok = payload.get("access_token", "")
             exp = int(payload.get("expires_in", 3600))
@@ -5216,49 +5546,58 @@ def query_athenac_host_overview(ip_str: str, force_refresh: bool = False) -> Dic
         except Exception:
             pass
 
-    base_url = get_system_setting("athenac_api_url", "https://192.168.25.180:8001").strip()
+    base_url = _normalize_athenac_base_url(get_system_setting("athenac_api_url", "https://192.168.25.180:8001"))
     api_key = get_system_setting("athenac_api_key", "").strip()
     username = get_system_setting("athenac_username", "").strip()
     password = get_system_setting("athenac_password", "").strip()
     mock_fallback = get_system_setting("athenac_mock_fallback", "1") == "1"
 
-    headers: Dict[str, str] = {"Accept": "application/json"}
-    has_creds = False
-    if api_key:
-        headers["X-Api-Key"] = api_key
-        has_creds = True
-    elif username and password:
+    # Build ordered auth header attempts: prefer valid pxk- API key, else OAuth2 first, with automatic fallback
+    auth_attempts = []
+    if api_key and api_key.startswith("pxk-"):
+        auth_attempts.append({"Accept": "application/json", "X-Api-Key": api_key})
+    if username and password:
         tok = _get_athenac_oauth_token(base_url, username, password)
         if tok:
-            headers["Authorization"] = f"Bearer {tok}"
-            has_creds = True
+            auth_attempts.append({"Accept": "application/json", "Authorization": f"Bearer {tok}"})
+    if api_key and not api_key.startswith("pxk-"):
+        auth_attempts.append({"Accept": "application/json", "X-Api-Key": api_key})
 
     host_info = None
-    if base_url and has_creds:
-        try:
-            ctx = ssl._create_unverified_context()
-            url = f"{base_url.rstrip('/')}/apiv3/Host/Overview?Ip={urllib.parse.quote(ip_clean)}"
-            req = urllib.request.Request(url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, context=ctx, timeout=4) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else None)
-                if item:
-                    loc = item.get("Location") or {}
-                    host_info = {
-                        "ip": ip_clean,
-                        "hostname": item.get("HostName") or "",
-                        "mac": item.get("Mac") or "",
-                        "vendor": item.get("Vendor") or "",
-                        "os_detail": item.get("OsDetail") or "",
-                        "switch_name": loc.get("SwitchName") or "",
-                        "port_name": loc.get("PortName") or "",
-                        "site_name": item.get("SiteName") or "",
-                        "network_name": item.get("NetworkName") or "",
-                        "is_online": bool(item.get("IsOnline", False)),
-                        "is_simulated": False,
-                    }
-        except Exception as e:
-            print(f"[AtheNAC] Query /apiv3/Host/Overview failed for {ip_clean}: {e}")
+    if base_url and auth_attempts:
+        ctx = ssl._create_unverified_context()
+        url = f"{base_url}/apiv3/Host/Overview?Ip={urllib.parse.quote(ip_clean)}"
+        for hdrs in auth_attempts:
+            try:
+                req = urllib.request.Request(url, headers=hdrs, method="GET")
+                with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else None)
+                    if item:
+                        loc = item.get("Location") or {}
+                        host_info = {
+                            "ip": ip_clean,
+                            "hostname": item.get("HostName") or "",
+                            "mac": _format_mac_readable(item.get("Mac") or ""),
+                            "vendor": item.get("Vendor") or "",
+                            "os_detail": item.get("OsDetail") or "",
+                            "switch_name": loc.get("SwitchName") or "",
+                            "port_name": loc.get("PortName") or "",
+                            "site_name": item.get("SiteName") or "",
+                            "network_name": item.get("NetworkName") or "",
+                            "is_online": bool(item.get("IsOnline", False)),
+                            "is_simulated": False,
+                        }
+                    else:
+                        # Valid HTTP 200 but IP not found in AtheNAC
+                        host_info = {
+                            "ip": ip_clean, "hostname": "", "mac": "", "vendor": "", "os_detail": "",
+                            "switch_name": "", "port_name": "", "site_name": "", "network_name": "",
+                            "is_online": False, "is_simulated": False
+                        }
+                    break
+            except Exception as e:
+                print(f"[AtheNAC] Query /apiv3/Host/Overview failed for {ip_clean}: {e}")
 
     if host_info is None:
         if mock_fallback:
@@ -5346,7 +5685,7 @@ def get_athenac_settings():
 
 @app.post("/api/settings/athenac")
 def save_athenac_settings(payload: AtheNACSettingsRequest):
-    set_system_setting("athenac_api_url", payload.api_url.strip())
+    set_system_setting("athenac_api_url", _normalize_athenac_base_url(payload.api_url))
     if payload.api_key is not None and payload.api_key.strip() != "":
         set_system_setting("athenac_api_key", payload.api_key.strip())
     if payload.username is not None:
@@ -5369,8 +5708,8 @@ def save_athenac_settings(payload: AtheNACSettingsRequest):
     return {"status": "success", "message": "AtheNAC (PIXIS Open API v3) 連線設定已儲存並清除快取。"}
 
 @app.post("/api/settings/athenac/test")
-def test_athenac_connection(test_ip: str = Query("192.168.30.101")):
-    base_url = get_system_setting("athenac_api_url", "https://192.168.25.180:8001").strip()
+def test_athenac_connection(test_ip: str = Query("192.168.10.201")):
+    base_url = _normalize_athenac_base_url(get_system_setting("athenac_api_url", "https://192.168.25.180:8001"))
     api_key = get_system_setting("athenac_api_key", "").strip()
     username = get_system_setting("athenac_username", "").strip()
     password = get_system_setting("athenac_password", "").strip()
@@ -5383,11 +5722,11 @@ def test_athenac_connection(test_ip: str = Query("192.168.30.101")):
         }
 
     info = query_athenac_host_overview(test_ip, force_refresh=True)
-    if info and not info.get("is_simulated"):
+    if info and not info.get("is_simulated") and (info.get("hostname") or info.get("mac") or info.get("switch_name")):
         return {"status": "connected", "message": f"成功連線至 {base_url} 並取得主機資料！", "sample": info}
     return {
         "status": "fallback",
-        "message": f"無法從 {base_url} 取得即時資料（可能憑證過期、網路未通或無該 IP 紀錄），已啟用模擬備援資料。",
+        "message": f"無法從 {base_url} 取得主機 {test_ip} 的即時資料（請確認 API 網址不含 /swagger、API Key 為 pxk- 開頭或 OAuth2 帳密正確）。",
         "sample": info
     }
 
@@ -7284,6 +7623,51 @@ def get_anomalies_diagnostics(
             host_stats[hip]["bytes"] += ev["total_bytes"]
 
         events_list.sort(key=lambda x: (sev_order.get(x["severity"], 9), -x["total_bytes"], -x["flow_count"]))
+
+        # Batch enrich asset_contact (owner/vendor) and incident_status onto events_list
+        try:
+            conn_enr = sqlite3.connect(DB_PATH)
+            conn_enr.row_factory = sqlite3.Row
+            cur_enr = conn_enr.cursor()
+            host_ip_list = list({e["host_ip"] for e in events_list if e.get("host_ip")})
+            contacts_map = {}
+            status_map = {}
+            if host_ip_list:
+                placeholders = ",".join(["?"] * len(host_ip_list))
+                cur_enr.execute(f"""
+                    SELECT ip, name,
+                           COALESCE(owner_name, '') as owner_name,
+                           COALESCE(department, '') as department,
+                           COALESCE(vendor_name, '') as vendor_name,
+                           COALESCE(contact_info, '') as contact_info,
+                           COALESCE(device_role, '') as device_role
+                    FROM ip_aliases WHERE ip IN ({placeholders})
+                """, host_ip_list)
+                for row in cur_enr.fetchall():
+                    contacts_map[row["ip"]] = dict(row)
+
+                cur_enr.execute(f"""
+                    SELECT host_ip, scenario_key, status, latest_note, note_count, updated_at
+                    FROM incident_status WHERE host_ip IN ({placeholders})
+                """, host_ip_list)
+                for row in cur_enr.fetchall():
+                    status_map[(row["host_ip"], row["scenario_key"])] = dict(row)
+            conn_enr.close()
+            for ev in events_list:
+                hip = ev.get("host_ip", "")
+                skey = ev.get("scenario_name", "")
+                ev["asset_contact"] = contacts_map.get(hip, {
+                    "ip": hip, "name": ev.get("host_alias", ""), "owner_name": "", "department": "",
+                    "vendor_name": "", "contact_info": "", "device_role": ""
+                })
+                st_info = status_map.get((hip, skey))
+                ev["incident_status"] = st_info["status"] if st_info else "open"
+                ev["incident_latest_note"] = st_info["latest_note"] if st_info else ""
+                ev["incident_note_count"] = st_info["note_count"] if st_info else 0
+                ev["incident_updated_at"] = st_info["updated_at"] if st_info else ""
+        except Exception as enr_err:
+            print(f"[Diagnostics Contact/Status Enrich Notice] {enr_err}", flush=True)
+
         top_hosts = sorted(host_stats.values(), key=lambda x: (-x["events"], -x["bytes"]))[:10]
         by_category = sorted(cat_stats.values(), key=lambda x: -x["events"])
 
